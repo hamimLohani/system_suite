@@ -705,6 +705,20 @@ get_outdated_count() {
   [[ ${count} =~ ^[0-9]+$ ]] && echo "${count}" || echo 0
 }
 
+refresh_package_db() {
+  case "${PKG_MANAGER}" in
+    brew) run_or_warn "Refreshing Homebrew" brew update ;;
+    apt) run_or_warn "Refreshing APT cache" sudo apt update ;;
+    dnf) run_or_warn "Refreshing DNF cache" sudo dnf makecache ;;
+    yum) run_or_warn "Refreshing YUM cache" sudo yum makecache ;;
+    pacman) run_or_warn "Refreshing Pacman DB" sudo pacman -Sy ;;
+    zypper) run_or_warn "Refreshing Zypper" sudo zypper refresh ;;
+    pkg) run_or_warn "Refreshing PKG" sudo pkg update ;;
+    xbps) run_or_warn "Refreshing XBPS" sudo xbps-install -S ;;
+    apk) run_or_warn "Refreshing APK" sudo apk update ;;
+  esac
+}
+
 run_pkg_update() {
   case "${PKG_MANAGER}" in
     brew) 
@@ -727,16 +741,116 @@ run_pkg_update() {
 }
 
 list_outdated() {
+  printf "\n${COLOR_INFO}Outdated packages:${COLOR_RESET}\n"
   case "${PKG_MANAGER}" in
-    brew) run_or_warn "Listing outdated packages" brew outdated ;;
-    apt) run_or_warn "Listing upgradable packages" apt list --upgradable ;;
-    dnf) run_or_warn "Checking for updates" dnf check-update ;;
-    yum) run_or_warn "Checking for updates" yum check-update ;;
-    pacman) run_or_warn "Listing outdated packages" pacman -Qu ;;
-    zypper) run_or_warn "Listing updates" zypper list-updates ;;
-    pkg) run_or_warn "Checking package versions" pkg version -v ;;
-    xbps) run_or_warn "Listing updates" xbps-install -un ;;
-    apk) run_or_warn "Listing upgradable packages" apk list -u ;;
+    brew) 
+      local outdated
+      if outdated=$(brew outdated 2>/dev/null); then
+        if [[ -n ${outdated} ]]; then
+          echo "${outdated}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to check outdated packages"
+      fi
+      ;;
+    apt) 
+      local upgradable
+      if upgradable=$(apt list --upgradable 2>/dev/null | grep -v "WARNING"); then
+        if [[ -n ${upgradable} ]]; then
+          echo "${upgradable}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to check upgradable packages"
+      fi
+      ;;
+    dnf) 
+      local updates
+      if updates=$(dnf check-update -q 2>/dev/null); then
+        if [[ -n ${updates} ]]; then
+          echo "${updates}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to check for updates"
+      fi
+      ;;
+    yum) 
+      local updates
+      if updates=$(yum check-update -q 2>/dev/null); then
+        if [[ -n ${updates} ]]; then
+          echo "${updates}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to check for updates"
+      fi
+      ;;
+    pacman) 
+      local outdated
+      if outdated=$(pacman -Qu 2>/dev/null); then
+        if [[ -n ${outdated} ]]; then
+          echo "${outdated}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to check outdated packages"
+      fi
+      ;;
+    zypper) 
+      local updates
+      if updates=$(zypper list-updates 2>/dev/null); then
+        if [[ -n ${updates} ]]; then
+          echo "${updates}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to list updates"
+      fi
+      ;;
+    pkg) 
+      local outdated
+      if outdated=$(pkg version -v 2>/dev/null | grep '<'); then
+        if [[ -n ${outdated} ]]; then
+          echo "${outdated}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to check package versions"
+      fi
+      ;;
+    xbps) 
+      local updates
+      if updates=$(xbps-install -un 2>/dev/null); then
+        if [[ -n ${updates} ]]; then
+          echo "${updates}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to list updates"
+      fi
+      ;;
+    apk) 
+      local upgradable
+      if upgradable=$(apk list -u 2>/dev/null); then
+        if [[ -n ${upgradable} ]]; then
+          echo "${upgradable}"
+        else
+          printf "${COLOR_SUCCESS}All packages are up to date${COLOR_RESET}\n"
+        fi
+      else
+        notify_warn "Failed to list upgradable packages"
+      fi
+      ;;
     *) notify_warn "Unsupported package manager: ${PKG_MANAGER}" ;;
   esac
 }
@@ -829,6 +943,8 @@ package_updates() {
     3)
       if confirm "Clean package cache and remove orphaned packages"; then
         clean_cache
+        printf "${COLOR_INFO}Refreshing package database...${COLOR_RESET}\n"
+        refresh_package_db
         printf "${COLOR_SUCCESS}Cleanup completed${COLOR_RESET}\n"
       fi
       ;;
@@ -836,35 +952,47 @@ package_updates() {
       read -r -p "Enter search term: " search_term
       if [[ -n ${search_term} ]]; then
         printf "\n${COLOR_INFO}Searching for packages containing '%s'...${COLOR_RESET}\n" "${search_term}"
+        printf "${COLOR_MUTED}Legend: [I] = Installed, [ ] = Available${COLOR_RESET}\n\n"
+        
         case "${PKG_MANAGER}" in
           brew) 
-            brew search "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
+            local installed_pkgs
+            installed_pkgs=$(brew list --formula 2>/dev/null)
+            brew search "${search_term}" 2>/dev/null | head -20 | while read -r pkg; do
+              if echo "${installed_pkgs}" | grep -q "^${pkg}$" 2>/dev/null; then
+                printf "${COLOR_SUCCESS}[I]${COLOR_RESET} %s\n" "${pkg}"
+              else
+                printf "${COLOR_MUTED}[ ]${COLOR_RESET} %s\n" "${pkg}"
+              fi
+            done || notify_warn "No packages found"
             ;;
           apt) 
-            apt search "${search_term}" 2>/dev/null | grep -v "WARNING" | head -20 || notify_warn "No packages found"
+            apt search "${search_term}" 2>/dev/null | grep -v "WARNING" | head -20 | while IFS= read -r line; do
+              if [[ ${line} =~ ^([^/]+) ]]; then
+                local pkg="${BASH_REMATCH[1]}"
+                if dpkg -l "${pkg}" 2>/dev/null | grep -q "^ii"; then
+                  printf "${COLOR_SUCCESS}[I]${COLOR_RESET} %s\n" "${line}"
+                else
+                  printf "${COLOR_MUTED}[ ]${COLOR_RESET} %s\n" "${line}"
+                fi
+              else
+                printf "%s\n" "${line}"
+              fi
+            done || notify_warn "No packages found"
             ;;
-          dnf) 
-            dnf search "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
+          *) 
+            # Fallback for other package managers
+            case "${PKG_MANAGER}" in
+              dnf) dnf search "${search_term}" 2>/dev/null | head -20 ;;
+              yum) yum search "${search_term}" 2>/dev/null | head -20 ;;
+              pacman) pacman -Ss "${search_term}" 2>/dev/null | head -20 ;;
+              zypper) zypper search "${search_term}" 2>/dev/null | head -20 ;;
+              pkg) pkg search "${search_term}" 2>/dev/null | head -20 ;;
+              xbps) xbps-query -Rs "${search_term}" 2>/dev/null | head -20 ;;
+              apk) apk search "${search_term}" 2>/dev/null | head -20 ;;
+              *) notify_warn "Search not supported for ${PKG_MANAGER}" ;;
+            esac || notify_warn "No packages found"
             ;;
-          yum) 
-            yum search "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
-            ;;
-          pacman) 
-            pacman -Ss "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
-            ;;
-          zypper) 
-            zypper search "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
-            ;;
-          pkg) 
-            pkg search "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
-            ;;
-          xbps) 
-            xbps-query -Rs "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
-            ;;
-          apk) 
-            apk search "${search_term}" 2>/dev/null | head -20 || notify_warn "No packages found"
-            ;;
-          *) notify_warn "Search not supported for ${PKG_MANAGER}" ;;
         esac
         printf "\n${COLOR_MUTED}Showing first 20 results${COLOR_RESET}\n"
       else
@@ -927,6 +1055,8 @@ package_updates() {
         
         if [[ ${install_success} == true ]]; then
           printf "\n${COLOR_SUCCESS}Package '%s' installed successfully${COLOR_RESET}\n" "${pkg_name}"
+          printf "${COLOR_INFO}Refreshing package database...${COLOR_RESET}\n"
+          refresh_package_db
         else
           printf "\n${COLOR_WARN}Package '%s' installation failed${COLOR_RESET}\n" "${pkg_name}"
         fi
@@ -990,6 +1120,8 @@ package_updates() {
         
         if [[ ${remove_success} == true ]]; then
           printf "\n${COLOR_SUCCESS}Package '%s' removed successfully${COLOR_RESET}\n" "${pkg_name}"
+          printf "${COLOR_INFO}Refreshing package database...${COLOR_RESET}\n"
+          refresh_package_db
         else
           printf "\n${COLOR_WARN}Package '%s' removal failed${COLOR_RESET}\n" "${pkg_name}"
         fi
