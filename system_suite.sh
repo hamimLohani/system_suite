@@ -1286,6 +1286,8 @@ process_monitor() {
 # Internet Speed Test
 #############################
 network_speed_test() {
+  set +e  # Disable exit on error for this function
+  
   clear_screen
   print_menu_header
   
@@ -1325,6 +1327,7 @@ network_speed_test() {
     printf "\n${COLOR_INFO}Installation suggestions:${COLOR_RESET}\n"
     printf "  brew install speedtest-cli\n"
     printf "  npm install -g fast-cli\n"
+    set -e
     pause
     return
   fi
@@ -1337,34 +1340,34 @@ network_speed_test() {
   printf "0) Cancel\n"
   
   local choice
-  read -r -p "Select speed test method: " choice
+  read -r -p "Select speed test method: " choice || choice="0"
   
   case "${choice}" in
     1)
-      # Auto-select: prefer networkQuality > speedtest-cli > fast-cli > curl
       if [[ ${has_networkquality} == true ]]; then
-        run_networkquality_test
+        run_networkquality_test || true
       elif [[ ${has_speedtest} == true ]]; then
-        run_speedtest_cli
+        run_speedtest_cli || true
       elif [[ ${has_fast} == true ]]; then
-        run_fast_cli
+        run_fast_cli || true
       elif [[ ${has_curl} == true ]]; then
-        run_curl_fallback
+        run_curl_fallback || true
       fi
       ;;
     2)
-      [[ ${has_networkquality} == true ]] && run_networkquality_test || notify_warn "networkQuality not available"
+      [[ ${has_networkquality} == true ]] && { run_networkquality_test || true; } || notify_warn "networkQuality not available"
       ;;
     3)
-      [[ ${has_speedtest} == true ]] && run_speedtest_cli || notify_warn "speedtest-cli not available"
+      [[ ${has_speedtest} == true ]] && { run_speedtest_cli || true; } || notify_warn "speedtest-cli not available"
       ;;
     4)
-      [[ ${has_fast} == true ]] && run_fast_cli || notify_warn "fast-cli not available"
+      [[ ${has_fast} == true ]] && { run_fast_cli || true; } || notify_warn "fast-cli not available"
       ;;
     5)
-      [[ ${has_curl} == true ]] && run_curl_fallback || notify_warn "curl not available"
+      [[ ${has_curl} == true ]] && { run_curl_fallback || true; } || notify_warn "curl not available"
       ;;
     0)
+      set -e
       return
       ;;
     *)
@@ -1373,8 +1376,9 @@ network_speed_test() {
   esac
   
   # Run latency test after speed test
-  run_latency_test
+  run_latency_test || true
   
+  set -e  # Re-enable exit on error
   pause
 }
 
@@ -1459,51 +1463,19 @@ run_fast_cli() {
 run_curl_fallback() {
   printf "\n${COLOR_INFO}Running curl-based speed test...${COLOR_RESET}\n"
   
-  # Test files from reliable CDNs
-  local test_files=(
-    "1MB:http://speedtest.ftp.otenet.gr/files/test1Mb.db:1048576"
-    "10MB:http://speedtest.ftp.otenet.gr/files/test10Mb.db:10485760"
-  )
+  # Simple connectivity test only
+  printf "Testing internet connectivity... "
   
-  local best_speed=0
-  local tests_completed=0
-  
-  for test_file in "${test_files[@]}"; do
-    IFS=':' read -r size_name url file_size <<< "${test_file}"
-    printf "Testing %s file... " "${size_name}"
-    
-    local start_time end_time
-    start_time=$(date +%s)
-    
-    if timeout 30 curl -s --max-time 25 -o /dev/null "${url}" 2>/dev/null; then
-      end_time=$(date +%s)
-      local duration=$((end_time - start_time))
-      
-      if [[ ${duration} -gt 0 ]]; then
-        local speed_bps=$((file_size / duration))
-        local speed_mbps=$(awk "BEGIN {printf \"%.1f\", ${speed_bps} * 8 / 1000000}")
-        
-        printf "${COLOR_SUCCESS}%.1f Mbps${COLOR_RESET}\n" "${speed_mbps}"
-        
-        if (( $(awk "BEGIN {print (${speed_mbps} > ${best_speed})}") )); then
-          best_speed=${speed_mbps}
-        fi
-        ((tests_completed++))
-      else
-        printf "${COLOR_WARN}Too fast to measure${COLOR_RESET}\n"
-      fi
-    else
-      printf "${COLOR_WARN}Failed${COLOR_RESET}\n"
-    fi
-    
-    [[ ${tests_completed} -ge 1 && ${best_speed%.*} -gt 5 ]] && break
-  done
-  
-  if [[ ${tests_completed} -gt 0 ]]; then
-    printf "\n${COLOR_HILIGHT}Best Download Speed: %.1f Mbps${COLOR_RESET}\n" "${best_speed}"
+  set +e
+  if curl -s --connect-timeout 5 --max-time 10 -o /dev/null "http://www.google.com" 2>/dev/null; then
+    printf "${COLOR_SUCCESS}Connected${COLOR_RESET}\n"
+    printf "\n${COLOR_INFO}Internet connection is working${COLOR_RESET}\n"
+    printf "${COLOR_MUTED}Note: Use networkQuality or speedtest-cli for accurate speed measurements${COLOR_RESET}\n"
   else
-    printf "\n${COLOR_WARN}All curl tests failed${COLOR_RESET}\n"
+    printf "${COLOR_WARN}Failed${COLOR_RESET}\n"
+    printf "\n${COLOR_WARN}No internet connection detected${COLOR_RESET}\n"
   fi
+  set -e
 }
 
 run_latency_test() {
@@ -1511,13 +1483,11 @@ run_latency_test() {
   
   if ! command -v ping >/dev/null 2>&1; then
     printf "${COLOR_WARN}ping command not available${COLOR_RESET}\n"
-    return
+    return 0
   fi
   
-  local ping_targets=("8.8.8.8" "1.1.1.1" "208.67.222.222")
-  local ping_names=("Google DNS" "Cloudflare" "OpenDNS")
-  local latency_sum=0
-  local latency_count=0
+  local ping_targets=("8.8.8.8")
+  local ping_names=("Google DNS")
   
   for i in "${!ping_targets[@]}"; do
     local target="${ping_targets[$i]}"
@@ -1526,39 +1496,19 @@ run_latency_test() {
     local ping_result
     case "${OS}" in
       "macOS"|"FreeBSD"|"OpenBSD"|"NetBSD")
-        ping_result=$(ping -c 3 -t 5 "${target}" 2>/dev/null | tail -1 | awk -F'/' '{print $5}' || echo "")
+        ping_result=$(ping -c 1 -t 5 "${target}" 2>/dev/null | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}' | tr -d 'ms' 2>/dev/null || echo "")
         ;;
       *)
-        ping_result=$(ping -c 3 -W 5 "${target}" 2>/dev/null | tail -1 | awk -F'/' '{print $5}' || echo "")
+        ping_result=$(ping -c 1 -W 5 "${target}" 2>/dev/null | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}' | tr -d 'ms' 2>/dev/null || echo "")
         ;;
     esac
     
-    if [[ -n ${ping_result} && ${ping_result} =~ ^[0-9.]+$ ]]; then
-      printf "${name}: ${COLOR_SUCCESS}%.0f ms${COLOR_RESET}\n" "${ping_result}"
-      latency_sum=$(awk "BEGIN {printf \"%.1f\", ${latency_sum} + ${ping_result}}")
-      ((latency_count++))
+    if [[ -n ${ping_result} ]] && [[ ${ping_result} =~ ^[0-9]+$ ]]; then
+      printf "${name}: ${COLOR_SUCCESS}${ping_result} ms${COLOR_RESET}\n"
     else
       printf "${name}: ${COLOR_WARN}Failed${COLOR_RESET}\n"
     fi
   done
-  
-  if [[ ${latency_count} -gt 0 ]]; then
-    local avg_latency
-    avg_latency=$(awk "BEGIN {printf \"%.0f\", ${latency_sum} / ${latency_count}}")
-    printf "\n${COLOR_HILIGHT}Average Latency: ${avg_latency} ms${COLOR_RESET}\n"
-    
-    # Latency quality assessment
-    printf "${COLOR_INFO}Latency Quality: ${COLOR_RESET}"
-    if [[ ${avg_latency} -le 20 ]]; then
-      printf "${COLOR_SUCCESS}Excellent${COLOR_RESET} (≤20ms)\n"
-    elif [[ ${avg_latency} -le 50 ]]; then
-      printf "${COLOR_SUCCESS}Good${COLOR_RESET} (≤50ms)\n"
-    elif [[ ${avg_latency} -le 100 ]]; then
-      printf "${COLOR_WARN}Fair${COLOR_RESET} (≤100ms)\n"
-    else
-      printf "${COLOR_WARN}Poor${COLOR_RESET} (>100ms)\n"
-    fi
-  fi
 }
 
 #############################
@@ -2355,6 +2305,7 @@ file_editor_nvim() {
     tput reset 2>/dev/null || clear
   else
     clear_screen
+    print_menu_header
   fi
   
   printf "Opening %s with nvim...\n" "${file_path}"
@@ -2391,6 +2342,108 @@ file_editor_nvim() {
 }
 
 #############################
+# Create New File
+#############################
+create_new_file() {
+  clear_screen
+  print_menu_header
+  
+  printf "${COLOR_INFO}Create New File${COLOR_RESET}\n"
+  read -e -p "Enter file path (Tab for completion): " file_path
+  
+  if [[ -z ${file_path} ]]; then
+    notify_warn "No file path provided"
+    pause
+    return
+  fi
+  
+  # Expand tilde to home directory
+  file_path=${file_path/#\~/${HOME}}
+  
+  # Convert relative path to absolute path
+  if [[ ${file_path} != /* ]]; then
+    file_path="${PWD}/${file_path}"
+  fi
+  
+  local file_dir
+  file_dir=$(dirname "${file_path}")
+  
+  # Create directory if it doesn't exist
+  if [[ ! -d ${file_dir} ]]; then
+    if confirm "Directory doesn't exist. Create it?"; then
+      if ! mkdir -p "${file_dir}" 2>/dev/null; then
+        notify_warn "Failed to create directory: ${file_dir}"
+        pause
+        return
+      fi
+    else
+      notify_warn "Cannot create file in non-existent directory"
+      pause
+      return
+    fi
+  fi
+  
+  # Check if file already exists
+  if [[ -f ${file_path} ]]; then
+    notify_warn "File already exists: ${file_path}"
+    if ! confirm "Edit existing file instead?"; then
+      pause
+      return
+    fi
+  fi
+  
+  # Choose editor: nvim first, then nano fallback
+  local editor
+  if command -v nvim >/dev/null 2>&1; then
+    editor="nvim"
+    printf "${COLOR_INFO}Opening with nvim...${COLOR_RESET}\n"
+  elif command -v nano >/dev/null 2>&1; then
+    editor="nano"
+    printf "${COLOR_INFO}nvim not found, using nano...${COLOR_RESET}\n"
+  else
+    notify_warn "Neither nvim nor nano found. Install one of them."
+    printf "Install with: brew install neovim (macOS) or sudo apt install nano\n"
+    pause
+    return
+  fi
+  
+  clear_screen
+  print_menu_header
+
+  printf "Creating/editing %s with %s...\n" "${file_path}" "${editor}"
+  if [[ ${editor} == "nvim" ]]; then
+    printf "Press ESC then :q to quit, :wq to save and quit\n\n"
+  else
+    printf "Press Ctrl+X to exit, Y to save, N to discard\n\n"
+  fi
+  sleep 0.5
+  
+  set +e
+  ${editor} "${file_path}"
+  local exit_code=$?
+  set -e
+  
+  tput reset 2>/dev/null || clear
+  
+  if [[ ${exit_code} -eq 0 ]]; then
+    if [[ -f ${file_path} ]]; then
+      print_menu_header
+      notify_info "File created/edited successfully: ${file_path}"
+      log_msg INFO "Created/edited file: ${file_path}"
+    else
+      notify_info "Editor exited without saving"
+    fi
+  elif [[ ${exit_code} -eq 130 ]]; then
+    notify_info "Editor cancelled (Ctrl+C)"
+  else
+    notify_warn "Editor exited with code ${exit_code}"
+    log_msg WARN "Editor exit code ${exit_code} for file: ${file_path}"
+  fi
+  
+  pause
+}
+
+#############################
 # Menu Handling
 #############################
 show_main_menu() {
@@ -2417,7 +2470,7 @@ show_main_menu() {
 11) View Logs
 12) File Finder (fzf)
 13) Time & Date Display
-14) File Editor (nvim)
+14) Create New File (nvim/nano)
 0) Exit
 MENU
   print_rule
@@ -2451,7 +2504,7 @@ main_loop() {
       11) view_logs ;;
       12) file_finder_fzf ;;
       13) time_date_display ;;
-      14) file_editor_nvim ;;
+      14) create_new_file ;;
       0|"") printf "🔚Goodbye!\n"; break ;;
       *) printf "Invalid choice: %s\n" "${choice}"; sleep 1 ;;
     esac
