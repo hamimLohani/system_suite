@@ -1,0 +1,95 @@
+name: Build and Upload to PPA
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y devscripts build-essential dh-make debhelper
+        
+    - name: Setup GPG key
+      run: |
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import
+        echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --sign /dev/null
+        
+    - name: Get version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+    - name: Create source package
+      run: |
+        # Create package directory
+        mkdir -p system-suite-${{ steps.version.outputs.VERSION }}
+        cd system-suite-${{ steps.version.outputs.VERSION }}
+        
+        # Copy source files
+        cp ../system_suite.sh .
+        cp ../README.md .
+        
+        # Initialize debian package
+        dh_make --single --native --copyright mit --email ${{ secrets.MAINTAINER_EMAIL }} --yes
+        
+        # Create proper control file
+        cat > debian/control << EOF
+        Source: system-suite
+        Section: utils
+        Priority: optional
+        Maintainer: ${{ secrets.MAINTAINER_NAME }} <${{ secrets.MAINTAINER_EMAIL }}>
+        Build-Depends: debhelper (>= 10)
+        Standards-Version: 4.1.2
+        Homepage: https://github.com/hamim-24/system_suite
+
+        Package: system-suite
+        Architecture: all
+        Depends: bash (>= 4.0), curl
+        Description: Terminal-based system maintenance and monitoring toolkit
+         A comprehensive system maintenance and monitoring toolkit for macOS, Linux,
+         and Unix-like systems. Features include system monitoring, disk cleanup,
+         package updates, network speed testing, file management, and more.
+        EOF
+        
+        # Create install file
+        echo "system_suite.sh usr/bin/system-suite" > debian/install
+        
+        # Create changelog
+        cat > debian/changelog << EOF
+        system-suite (${{ steps.version.outputs.VERSION }}-1) stable; urgency=medium
+
+          * New upstream release ${{ steps.version.outputs.VERSION }}
+
+         -- ${{ secrets.MAINTAINER_NAME }} <${{ secrets.MAINTAINER_EMAIL }}>  $(date -R)
+        EOF
+        
+        # Build source package
+        debuild -S -sa
+        
+    - name: Upload to PPA
+      run: |
+        dput ppa:hamim-24/system-suite system-suite_${{ steps.version.outputs.VERSION }}-1_source.changes
+        
+    - name: Create .deb package for release
+      run: |
+        cd system-suite-${{ steps.version.outputs.VERSION }}
+        debuild -b -uc -us
+        
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          system-suite_${{ steps.version.outputs.VERSION }}-1_all.deb
+          system-suite_${{ steps.version.outputs.VERSION }}-1.dsc
+          system-suite_${{ steps.version.outputs.VERSION }}-1.tar.xz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
