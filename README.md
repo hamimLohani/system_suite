@@ -1,4 +1,4 @@
-# System Suite v1.0.1
+# System Suite v1
 
 A comprehensive terminal-based system maintenance and monitoring toolkit for macOS, Linux, and Unix-like systems.
 
