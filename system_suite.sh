@@ -2452,7 +2452,7 @@ main_loop() {
       12) file_finder_fzf ;;
       13) time_date_display ;;
       14) file_editor_nvim ;;
-      0|"") printf "Goodbye!\n"; break ;;
+      0|"") printf "🔚Goodbye!\n"; break ;;
       *) printf "Invalid choice: %s\n" "${choice}"; sleep 1 ;;
     esac
   done
