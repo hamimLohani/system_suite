@@ -21,8 +21,18 @@ jobs:
         
     - name: Setup GPG key
       run: |
-        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import
-        echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --sign /dev/null
+        # Configure GPG
+        mkdir -p ~/.gnupg
+        chmod 700 ~/.gnupg
+        echo "use-agent" >> ~/.gnupg/gpg.conf
+        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+        
+        # Import private key
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        
+        # Test GPG key
+        echo "test" | gpg --batch --yes --passphrase "${{ secrets.GPG_PASSPHRASE }}" --pinentry-mode loopback --sign > /dev/null
         
     - name: Get version from tag
       id: version
@@ -75,9 +85,9 @@ jobs:
         # Build source package
         debuild -S -sa
         
-    - name: Upload to PPA
-      run: |
-        dput ppa:hamim-24/system-suite system-suite_${{ steps.version.outputs.VERSION }}-1_source.changes
+    # - name: Upload to PPA
+    #   run: |
+    #     dput ppa:hamim-24/system-suite system-suite_${{ steps.version.outputs.VERSION }}-1_source.changes
         
     - name: Create .deb package for release
       run: |
