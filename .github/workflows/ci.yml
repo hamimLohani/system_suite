@@ -17,4 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run smoke tests
+        env:
+          TERM: dumb
         run: bash test/smoke.sh

@@ -14,6 +14,7 @@ bash -n "${script}"
 }
 
 SYSTEM_SUITE_DISK_PATH="/" "${script}" --non-interactive info >/tmp/system_suite_info.out
+"${script}" --non-interactive update >/tmp/system_suite_update.out
 "${script}" --non-interactive cleanup --dry-run >/tmp/system_suite_cleanup.out
 "${script}" --non-interactive backup >/tmp/system_suite_backup.out
 
