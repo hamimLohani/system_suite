@@ -277,7 +277,7 @@ fi
 # TUI Rendering helpers
 #############################
 clear_screen() {
-  tput reset 2>/dev/null || clear
+  tput reset 2>/dev/null || clear 2>/dev/null || true
 }
 
 print_centered() {
@@ -2602,7 +2602,7 @@ file_editor_nvim() {
   fi
   
   if [[ ${use_fzf} == true ]]; then
-    tput reset 2>/dev/null || clear
+    clear_screen
   else
     clear_screen
     print_menu_header
@@ -2617,7 +2617,7 @@ file_editor_nvim() {
   local exit_code=$?
   set -e
   
-  tput reset 2>/dev/null || clear
+  clear_screen
   
   if [[ ${exit_code} -ne 0 ]] && [[ ${exit_code} -ne 130 ]]; then
     notify_warn "nvim may have failed. Exit code: ${exit_code}"
@@ -2723,7 +2723,7 @@ create_new_file() {
   local exit_code=$?
   set -e
   
-  tput reset 2>/dev/null || clear
+  clear_screen
   
   if [[ ${exit_code} -eq 0 ]]; then
     if [[ -f ${file_path} ]]; then
