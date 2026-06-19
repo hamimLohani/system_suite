@@ -570,7 +570,7 @@ system_info_dashboard() {
   print_stat_line "Total Processes" "$(get_total_processes)"
   print_stat_line "Users Logged In" "$(get_users_logged)"
   print_stat_line "Package Manager" "${PKG_MANAGER}"
-  print_stat_line "Shell" "$(basename "${SHELL}" 2>/dev/null || echo 'N/A')"
+  print_stat_line "Shell" "$(basename "${SHELL:-unknown}" 2>/dev/null || echo 'N/A')"
   
   printf "\n${COLOR_HILIGHT}System Status:${COLOR_RESET}\n"
   print_stat_line "Current Time" "$(date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date)"

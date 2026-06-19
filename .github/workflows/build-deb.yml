@@ -1,9 +1,12 @@
-name: Build and Upload to PPA
+name: Build Release Deb
 
 on:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build-deb:
@@ -13,21 +16,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y devscripts build-essential debhelper dh-make
-
-    - name: Setup GPG key
-      run: |
-        mkdir -p ~/.gnupg
-        chmod 700 ~/.gnupg
-        echo "use-agent" >> ~/.gnupg/gpg.conf
-        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
-        echo "test" | gpg --batch --yes --passphrase "${{ secrets.GPG_PASSPHRASE }}" --pinentry-mode loopback --sign > /dev/null
-
     - name: Get version from tag
       id: version
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
@@ -35,59 +23,35 @@ jobs:
     - name: Create .deb package
       env:
         VERSION: ${{ steps.version.outputs.VERSION }}
-        MAINTAINER_NAME: ${{ secrets.MAINTAINER_NAME }}
-        MAINTAINER_EMAIL: ${{ secrets.MAINTAINER_EMAIL }}
       run: |
-        PKG="system-suite-${VERSION}"
-        mkdir -p "${PKG}"
-        cp system_suite.sh "${PKG}/"
-        cp README.md "${PKG}/"
-        cd "${PKG}"
+        PKG_DIR="system-suite_${VERSION}_all"
+        mkdir -p "${PKG_DIR}/DEBIAN" "${PKG_DIR}/usr/bin" "${PKG_DIR}/usr/share/doc/system-suite"
 
-        # Init debian dir
-        dh_make --single --native --copyright mit \
-          --email "${MAINTAINER_EMAIL}" --yes || true
+        install -m 0755 system_suite.sh "${PKG_DIR}/usr/bin/system-suite"
+        install -m 0644 README.md LICENSE "${PKG_DIR}/usr/share/doc/system-suite/"
 
-        # control file (no leading spaces)
-        cat > debian/control << EOF
-        Source: system-suite
+        cat > "${PKG_DIR}/DEBIAN/control" << EOF
+        Package: system-suite
+        Version: ${VERSION}
         Section: utils
         Priority: optional
-        Maintainer: ${MAINTAINER_NAME} <${MAINTAINER_EMAIL}>
-        Build-Depends: debhelper-compat (= 13)
-        Standards-Version: 4.6.0
-        Homepage: https://github.com/hamim-24/system_suite
-
-        Package: system-suite
         Architecture: all
+        Maintainer: hamimLohani <hamimlohani@gmail.com>
         Depends: bash (>= 4.0), curl
+        Homepage: https://github.com/hamimLohani/system_suite
         Description: Terminal-based system maintenance and monitoring toolkit
          A comprehensive system maintenance and monitoring toolkit for macOS, Linux,
          and Unix-like systems. Provides system monitoring, disk cleanup, package
          updates, network speed testing, file management, and more.
         EOF
-        # Remove leading whitespace from control file
-        sed -i 's/^        //' debian/control
+        sed -i 's/^        //' "${PKG_DIR}/DEBIAN/control"
 
-        # install file
-        echo "system_suite.sh usr/bin/system-suite" > debian/install
-
-        # changelog
-        cat > debian/changelog << EOF
-        system-suite (${VERSION}-1) stable; urgency=medium
-
-          * New upstream release ${VERSION}
-
-         -- ${MAINTAINER_NAME} <${MAINTAINER_EMAIL}>  $(date -R)
-        EOF
-
-        # Build binary .deb (no signing needed for release assets)
-        debuild -b -uc -us
+        dpkg-deb --build "${PKG_DIR}"
 
     - name: Upload release assets
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          system-suite_${{ steps.version.outputs.VERSION }}-1_all.deb
+          system-suite_${{ steps.version.outputs.VERSION }}_all.deb
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

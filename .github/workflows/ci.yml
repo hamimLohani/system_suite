@@ -8,6 +8,7 @@ jobs:
   smoke:
     name: Shell smoke tests
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -17,4 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run smoke tests
+        env:
+          TERM: dumb
         run: bash test/smoke.sh
