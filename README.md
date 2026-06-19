@@ -53,9 +53,16 @@ A comprehensive terminal-based system maintenance and monitoring toolkit for mac
 ### Quick Start
 ```bash
 # Clone or download the script
-curl -O https://raw.githubusercontent.com/hamim-24/system_suite/main/system_suite.sh
+curl -O https://raw.githubusercontent.com/hamimLohani/system_suite/main/system_suite.sh
 chmod +x system_suite.sh
 ./system_suite.sh
+```
+
+### Install via Homebrew
+```bash
+brew tap hamimlohani/tap
+brew trust hamimlohani/tap
+brew install system-suite
 ```
 
 ### Dependencies
