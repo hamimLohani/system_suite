@@ -50,20 +50,17 @@ fi
 #############################
 # Styling Helpers
 #############################
-if command -v tput >/dev/null 2>&1; then
-  T_COLORS=$(TERM=${TERM:-dumb} tput colors 2>/dev/null || echo 0)
-else
-  T_COLORS=0
-fi
+# Ensure TERM is set so tput never errors in non-interactive/CI environments
+export TERM=${TERM:-dumb}
 
-if [[ ${T_COLORS} -ge 8 ]]; then
-  COLOR_RESET="$(TERM=${TERM:-dumb} tput sgr0 2>/dev/null || true)"
-  COLOR_TITLE="$(TERM=${TERM:-dumb} tput setaf 6 2>/dev/null || true)"
-  COLOR_MUTED="$(TERM=${TERM:-dumb} tput setaf 7 2>/dev/null || true)"
-  COLOR_HILIGHT="$(TERM=${TERM:-dumb} tput bold 2>/dev/null || true)$(TERM=${TERM:-dumb} tput setaf 3 2>/dev/null || true)"
-  COLOR_SUCCESS="$(TERM=${TERM:-dumb} tput bold 2>/dev/null || true)$(TERM=${TERM:-dumb} tput setaf 2 2>/dev/null || true)"
-  COLOR_WARN="$(TERM=${TERM:-dumb} tput bold 2>/dev/null || true)$(TERM=${TERM:-dumb} tput setaf 1 2>/dev/null || true)"
-  COLOR_INFO="$(TERM=${TERM:-dumb} tput setaf 4 2>/dev/null || true)"
+if command -v tput >/dev/null 2>&1 && [[ $(TERM=${TERM} tput colors 2>/dev/null || echo 0) -ge 8 ]]; then
+  COLOR_RESET="$(tput sgr0 2>/dev/null || true)"
+  COLOR_TITLE="$(tput setaf 6 2>/dev/null || true)"
+  COLOR_MUTED="$(tput setaf 7 2>/dev/null || true)"
+  COLOR_HILIGHT="$(tput bold 2>/dev/null || true)$(tput setaf 3 2>/dev/null || true)"
+  COLOR_SUCCESS="$(tput bold 2>/dev/null || true)$(tput setaf 2 2>/dev/null || true)"
+  COLOR_WARN="$(tput bold 2>/dev/null || true)$(tput setaf 1 2>/dev/null || true)"
+  COLOR_INFO="$(tput setaf 4 2>/dev/null || true)"
 else
   COLOR_RESET=""
   COLOR_TITLE=""
