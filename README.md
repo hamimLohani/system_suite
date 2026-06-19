@@ -1,4 +1,4 @@
-# System Suite v1
+# System Suite v1.1
 
 **[YouTube Video](https://youtu.be/W2TKm4A-wA8)**
 
@@ -96,13 +96,24 @@ sudo pkg install htop fzf neovim speedtest-cli curl
 
 ### Non-Interactive Mode
 ```bash
-# Run specific functions
-./system_suite.sh --non-interactive info      # System info
-./system_suite.sh --non-interactive cleanup   # Disk cleanup
-./system_suite.sh --non-interactive update    # Package updates
-./system_suite.sh --non-interactive backup    # Create backup
-./system_suite.sh --non-interactive speed     # Speed test
-./system_suite.sh --non-interactive monitor   # Process monitor
+# Run specific functions without blocking prompts
+./system_suite.sh --non-interactive info              # System info
+./system_suite.sh --non-interactive cleanup --dry-run # Preview cleanup
+./system_suite.sh --non-interactive cleanup --yes     # Clean safe targets
+./system_suite.sh --non-interactive update            # List package updates
+./system_suite.sh --non-interactive update --yes      # Update packages
+./system_suite.sh --non-interactive backup            # Show backup sources
+./system_suite.sh --non-interactive backup --yes      # Create backup
+./system_suite.sh --non-interactive speed             # Speed/connectivity test
+./system_suite.sh --non-interactive monitor           # Process list only
+```
+
+Direct command style is also supported:
+```bash
+./system_suite.sh info
+./system_suite.sh cleanup --dry-run
+./system_suite.sh --version
+./system_suite.sh --help
 ```
 
 ## Configuration
@@ -205,17 +216,32 @@ tail -f ~/.local/share/system_suite/system_suite.log
 ## Advanced Usage
 
 ### Custom Backup Sources
-Edit the script or set environment variable:
+Set the `BACKUP_SOURCES` environment variable:
 ```bash
-# In script (line ~1050)
-backup_sources=("${HOME}/Documents" "${HOME}/Projects" "${HOME}/Pictures")
-
-# Or via environment
 export BACKUP_SOURCES="$HOME/Documents $HOME/Projects"
 ```
 
 ### Custom Cleanup Targets
 Modify `get_cleanup_targets()` function to add custom directories.
+
+Cleanup is conservative by default:
+- Non-interactive cleanup previews actions unless `--yes` is provided.
+- Raw `/tmp`, `/var/log`, and the home directory are skipped as unsafe direct targets.
+- User cache, trash, browser cache, and development cache directories are cleaned by deleting their contents only.
+
+## Development
+
+Run local smoke checks:
+```bash
+bash test/smoke.sh
+```
+
+Recommended linting:
+```bash
+shellcheck system_suite.sh test/smoke.sh
+```
+
+GitHub Actions runs smoke tests on Ubuntu and macOS to protect cross-OS behavior.
 
 ### Keyboard Shortcuts
 - **Ctrl+C** - Cancel current operation
@@ -234,6 +260,14 @@ Modify `get_cleanup_targets()` function to add custom directories.
 MIT License - see LICENSE file for details.
 
 ## Changelog
+
+### v1.1.0
+- Added safer non-interactive CLI behavior
+- Added `--help`, `--version`, `--yes`, and `--dry-run`
+- Added dry-run cleanup and guarded cleanup targets
+- Removed `eval` from file finder
+- Added `BACKUP_SOURCES` support
+- Added MIT license and CI smoke tests
 
 ### v1.0.0
 - Initial release

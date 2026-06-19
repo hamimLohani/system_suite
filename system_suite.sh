@@ -6,7 +6,7 @@ IFS=$'\n\t'
 #############################
 # Global Configuration
 #############################
-SCRIPT_VERSION="1.0.5"
+SCRIPT_VERSION="1.2.0"
 SCRIPT_NAME="System Suite"
 CONFIG_DIR="${HOME}/.config/system_suite"
 DATA_DIR="${HOME}/.local/share/system_suite"
@@ -19,6 +19,13 @@ ALERT_THRESHOLD_TEMP=80
 ALERT_THRESHOLD_BATTERY=20
 MENU_REFRESH_SECONDS=2
 MENU_WIDTH=80
+NON_INTERACTIVE=false
+ASSUME_YES=false
+CLEANUP_DRY_RUN=false
+REPORT_FORMAT="markdown"
+RESTORE_ARCHIVE=""
+RESTORE_DEST=""
+RESTORE_LIST=false
 DEFAULT_DISK_TARGET="${HOME:-/}"
 DISK_USAGE_PATH="${SYSTEM_SUITE_DISK_PATH:-${DEFAULT_DISK_TARGET}}"
 if [[ ! -d "${DISK_USAGE_PATH}" ]]; then
@@ -120,6 +127,14 @@ human_size() {
 
 confirm() {
   local prompt=${1:-"Continue?"}
+  if [[ ${ASSUME_YES} == true ]]; then
+    printf "%s [auto-yes]\n" "${prompt}"
+    return 0
+  fi
+  if [[ ${NON_INTERACTIVE} == true ]]; then
+    printf "%s [auto-no: pass --yes to confirm]\n" "${prompt}"
+    return 1
+  fi
   local response
   read -r -p "${prompt} [y/N]: " response || return 1
   local lower_response
@@ -128,6 +143,7 @@ confirm() {
 }
 
 pause() {
+  [[ ${NON_INTERACTIVE} == true ]] && return 0
   read -r -p "Press Enter to continue..." _ || true
 }
 
@@ -141,6 +157,24 @@ notify_info() {
   local message=${1:-"Info"}
   printf "${COLOR_INFO}%s${COLOR_RESET}\n" "${message}"
   log_msg INFO "${message}"
+}
+
+json_escape() {
+  local value=${1:-}
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/}
+  printf '%s' "${value}"
+}
+
+command_status() {
+  local cmd=${1:-}
+  if command -v "${cmd}" >/dev/null 2>&1; then
+    printf "available"
+  else
+    printf "missing"
+  fi
 }
 
 run_or_warn() {
@@ -283,11 +317,11 @@ get_cpu_usage() {
   case "${OS}" in
     "macOS")
       top -l 1 -n 0 2>/dev/null | awk -F'[:%, ]+' '/CPU usage/ {usage=$4+$7; printf "%.1f", usage; exit}' \
-        || ps -A -o %cpu= | awk '{s+=$1} END {if (NR==0) {print "N/A"} else printf "%.1f", s}'
+        || ps -A -o %cpu= 2>/dev/null | awk '{s+=$1} END {if (NR==0) {print "N/A"} else printf "%.1f", s}'
       ;;
     "FreeBSD"|"OpenBSD"|"NetBSD")
       top -d1 2>/dev/null | awk '/^CPU:/ {gsub(/[%,]/,""); for(i=1;i<=NF;i++) if($i=="idle") printf "%.1f", 100-$(i-1); exit}' \
-        || ps -ax -o %cpu= | awk '{s+=$1} END {if (NR==0) {print "N/A"} else printf "%.1f", s}'
+        || ps -ax -o %cpu= 2>/dev/null | awk '{s+=$1} END {if (NR==0) {print "N/A"} else printf "%.1f", s}'
       ;;
     "Windows"|"WSL")
       if command -v wmic >/dev/null 2>&1; then
@@ -489,6 +523,16 @@ get_network_info() {
   echo "${interface}"
 }
 
+get_ip_address() {
+  local ip_addr
+  if [[ ${OS} == "macOS" ]]; then
+    ip_addr=$(ipconfig getifaddr en0 2>/dev/null || ifconfig en0 2>/dev/null | awk '/inet / {print $2; exit}' || echo 'N/A')
+  else
+    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7; exit}' || echo 'N/A')
+  fi
+  printf "%s" "${ip_addr:-N/A}"
+}
+
 get_total_processes() {
   ps aux 2>/dev/null | wc -l | tr -d ' ' 2>/dev/null || echo "N/A"
 }
@@ -522,13 +566,7 @@ system_info_dashboard() {
   fi
   
   printf "\n${COLOR_HILIGHT}Network Information:${COLOR_RESET}\n"
-  local ip_addr
-  if [[ ${OS} == "macOS" ]]; then
-    ip_addr=$(ipconfig getifaddr en0 2>/dev/null || ifconfig en0 2>/dev/null | awk '/inet / {print $2}' || echo 'N/A')
-  else
-    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7; exit}' || echo 'N/A')
-  fi
-  print_stat_line "IP Address" "${ip_addr}"
+  print_stat_line "IP Address" "$(get_ip_address)"
   print_stat_line "Network Interface" "$(get_network_info)"
   
   printf "\n${COLOR_HILIGHT}System Activity:${COLOR_RESET}\n"
@@ -546,14 +584,162 @@ system_info_dashboard() {
   pause
 }
 
+system_report() {
+  local hostname kernel arch uptime_value cpu_model cpu_cores cpu_usage load_average memory_usage root_disk home_disk ip_addr network_iface process_count users_logged current_time
+  hostname=$(hostname 2>/dev/null || echo 'N/A')
+  kernel=$(uname -sr 2>/dev/null || echo 'N/A')
+  arch=$(uname -m 2>/dev/null || echo 'N/A')
+  uptime_value=$(get_uptime)
+  cpu_model=$(get_cpu_info | cut -c1-80)
+  cpu_cores=$(get_cpu_cores)
+  cpu_usage=$(get_cpu_usage)
+  load_average=$(get_load_average)
+  memory_usage=$(get_mem_usage)
+  root_disk=$(get_disk_usage /)
+  home_disk=$(get_disk_usage)
+  ip_addr=$(get_ip_address)
+  network_iface=$(get_network_info)
+  process_count=$(get_total_processes)
+  users_logged=$(get_users_logged)
+  current_time=$(date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date)
+
+  case "${REPORT_FORMAT}" in
+    json)
+      printf '{\n'
+      printf '  "script": "%s",\n' "$(json_escape "${SCRIPT_NAME}")"
+      printf '  "version": "%s",\n' "$(json_escape "${SCRIPT_VERSION}")"
+      printf '  "generated_at": "%s",\n' "$(json_escape "${current_time}")"
+      printf '  "host": {\n'
+      printf '    "hostname": "%s",\n' "$(json_escape "${hostname}")"
+      printf '    "os": "%s",\n' "$(json_escape "${OS}")"
+      printf '    "kernel": "%s",\n' "$(json_escape "${kernel}")"
+      printf '    "architecture": "%s",\n' "$(json_escape "${arch}")"
+      printf '    "uptime": "%s"\n' "$(json_escape "${uptime_value}")"
+      printf '  },\n'
+      printf '  "hardware": {\n'
+      printf '    "cpu_model": "%s",\n' "$(json_escape "${cpu_model}")"
+      printf '    "cpu_cores": "%s",\n' "$(json_escape "${cpu_cores}")"
+      printf '    "cpu_usage_percent": "%s",\n' "$(json_escape "${cpu_usage}")"
+      printf '    "load_average": "%s",\n' "$(json_escape "${load_average}")"
+      printf '    "memory": "%s"\n' "$(json_escape "${memory_usage}")"
+      printf '  },\n'
+      printf '  "storage": {\n'
+      printf '    "root": "%s",\n' "$(json_escape "${root_disk}")"
+      printf '    "configured_path": "%s"\n' "$(json_escape "${home_disk}")"
+      printf '  },\n'
+      printf '  "network": {\n'
+      printf '    "ip_address": "%s",\n' "$(json_escape "${ip_addr}")"
+      printf '    "interface": "%s"\n' "$(json_escape "${network_iface}")"
+      printf '  },\n'
+      printf '  "activity": {\n'
+      printf '    "processes": "%s",\n' "$(json_escape "${process_count}")"
+      printf '    "logged_in_users": "%s",\n' "$(json_escape "${users_logged}")"
+      printf '    "package_manager": "%s"\n' "$(json_escape "${PKG_MANAGER}")"
+      printf '  }\n'
+      printf '}\n'
+      ;;
+    markdown|md)
+      printf "# %s Report\n\n" "${SCRIPT_NAME}"
+      printf "- Generated: %s\n" "${current_time}"
+      printf "- Version: %s\n\n" "${SCRIPT_VERSION}"
+      printf "## System\n\n"
+      printf "| Metric | Value |\n|---|---|\n"
+      printf "| Hostname | %s |\n" "${hostname}"
+      printf "| OS | %s |\n" "${OS}"
+      printf "| Kernel | %s |\n" "${kernel}"
+      printf "| Architecture | %s |\n" "${arch}"
+      printf "| Uptime | %s |\n\n" "${uptime_value}"
+      printf "## Hardware\n\n"
+      printf "| Metric | Value |\n|---|---|\n"
+      printf "| CPU | %s |\n" "${cpu_model}"
+      printf "| CPU Cores | %s |\n" "${cpu_cores}"
+      printf "| CPU Usage | %s%% |\n" "${cpu_usage}"
+      printf "| Load Average | %s |\n" "${load_average}"
+      printf "| Memory | %s |\n\n" "${memory_usage}"
+      printf "## Storage and Network\n\n"
+      printf "| Metric | Value |\n|---|---|\n"
+      printf "| Root Disk | %s |\n" "${root_disk}"
+      printf "| Configured Disk Path | %s |\n" "${home_disk}"
+      printf "| IP Address | %s |\n" "${ip_addr}"
+      printf "| Network Interface | %s |\n\n" "${network_iface}"
+      printf "## Activity\n\n"
+      printf "| Metric | Value |\n|---|---|\n"
+      printf "| Processes | %s |\n" "${process_count}"
+      printf "| Logged In Users | %s |\n" "${users_logged}"
+      printf "| Package Manager | %s |\n" "${PKG_MANAGER}"
+      ;;
+    *)
+      notify_warn "Unsupported report format: ${REPORT_FORMAT}. Use markdown or json."
+      return 2
+      ;;
+  esac
+}
+
+doctor_check() {
+  local status=${1:-WARN}
+  local name=${2:-"Check"}
+  local detail=${3:-""}
+  local color="${COLOR_WARN}"
+  [[ ${status} == "OK" ]] && color="${COLOR_SUCCESS}"
+  [[ ${status} == "FAIL" ]] && color="${COLOR_WARN}"
+  printf "%s%-5s${COLOR_RESET} %s" "${color}" "${status}" "${name}"
+  [[ -n ${detail} ]] && printf " - %s" "${detail}"
+  printf "\n"
+}
+
+system_doctor() {
+  clear_screen
+  print_menu_header
+  printf "${COLOR_HILIGHT}System Suite Doctor:${COLOR_RESET}\n\n"
+
+  doctor_check "OK" "Operating system" "${OS}"
+  doctor_check "OK" "Architecture" "$(uname -m 2>/dev/null || echo 'N/A')"
+  if [[ ${BASH_VERSINFO[0]:-0} -ge 4 ]]; then
+    doctor_check "OK" "Bash version" "${BASH_VERSION}"
+  else
+    doctor_check "WARN" "Bash version" "${BASH_VERSION} detected; 4.0+ is recommended"
+  fi
+
+  if [[ ${PKG_MANAGER} == "unknown" ]]; then
+    doctor_check "WARN" "Package manager" "none detected"
+  else
+    doctor_check "OK" "Package manager" "${PKG_MANAGER}"
+  fi
+
+  local cmd
+  for cmd in tar df awk sed find date; do
+    if command -v "${cmd}" >/dev/null 2>&1; then
+      doctor_check "OK" "Command ${cmd}" "available"
+    else
+      doctor_check "FAIL" "Command ${cmd}" "missing"
+    fi
+  done
+
+  for cmd in curl ping fzf nvim htop speedtest-cli fast; do
+    if command -v "${cmd}" >/dev/null 2>&1; then
+      doctor_check "OK" "Optional ${cmd}" "available"
+    else
+      doctor_check "WARN" "Optional ${cmd}" "missing"
+    fi
+  done
+
+  [[ -w ${DATA_DIR} ]] && doctor_check "OK" "Data directory" "${DATA_DIR}" || doctor_check "FAIL" "Data directory" "not writable: ${DATA_DIR}"
+  [[ -w ${BACKUP_DIR} ]] && doctor_check "OK" "Backup directory" "${BACKUP_DIR}" || doctor_check "FAIL" "Backup directory" "not writable: ${BACKUP_DIR}"
+  [[ -w ${CONFIG_DIR} ]] && doctor_check "OK" "Config directory" "${CONFIG_DIR}" || doctor_check "WARN" "Config directory" "not writable: ${CONFIG_DIR}"
+  [[ -f ${LOG_FILE} && -w ${LOG_FILE} ]] && doctor_check "OK" "Log file" "${LOG_FILE}" || doctor_check "WARN" "Log file" "not writable: ${LOG_FILE}"
+
+  printf "\n"
+  pause
+}
+
 #############################
 # Disk Cleanup
 #############################
 get_cleanup_targets() {
   local -a targets
   
-  # Common temp/cache directories
-  targets+=("/tmp")
+  # Common temp/cache directories. Keep system-wide paths conservative.
+  [[ -d "${TMPDIR:-}" ]] && targets+=("${TMPDIR}")
   [[ -d "${HOME}/.cache" ]] && targets+=("${HOME}/.cache")
   [[ -d "${HOME}/.local/share/Trash" ]] && targets+=("${HOME}/.local/share/Trash")
   
@@ -567,7 +753,12 @@ get_cleanup_targets() {
   fi
   
   # Browser caches
-  [[ -d "${HOME}/.mozilla/firefox" ]] && targets+=("${HOME}/.mozilla/firefox/*/cache2")
+  if [[ -d "${HOME}/.mozilla/firefox" ]]; then
+    local firefox_cache
+    while IFS= read -r firefox_cache; do
+      [[ -d ${firefox_cache} ]] && targets+=("${firefox_cache}")
+    done < <(find "${HOME}/.mozilla/firefox" -maxdepth 2 -type d -name cache2 2>/dev/null)
+  fi
   [[ -d "${HOME}/.config/google-chrome/Default/Cache" ]] && targets+=("${HOME}/.config/google-chrome/Default/Cache")
   [[ -d "${HOME}/Library/Caches/Google/Chrome" ]] && targets+=("${HOME}/Library/Caches/Google/Chrome")
   
@@ -588,6 +779,37 @@ get_cleanup_targets() {
   printf '%s\n' "${targets[@]}"
 }
 
+is_safe_cleanup_target() {
+  local target=${1:-}
+  [[ -z ${target} ]] && return 1
+  [[ ${target} == "/" || ${target} == "${HOME}" || ${target} == "/tmp" || ${target} == "/var/log" ]] && return 1
+  [[ ${target} == "${HOME}/"* || ${target} == "${TMPDIR:-/private/tmp/}"* ]] && return 0
+  [[ ${target} == "/var/lib/docker/tmp" ]] && return 0
+  return 1
+}
+
+clean_target_contents() {
+  local target=${1:-}
+  [[ -z ${target} || ! -d ${target} ]] && return 1
+  if ! is_safe_cleanup_target "${target}"; then
+    notify_warn "Skipping unsafe cleanup target: ${target}"
+    return 1
+  fi
+  if [[ ${CLEANUP_DRY_RUN} == true ]]; then
+    printf "${COLOR_INFO}Dry run:${COLOR_RESET} would clean %s\n" "${target}"
+    return 0
+  fi
+  if [[ -w ${target} ]] || [[ -w $(dirname "${target}") ]]; then
+    if find "${target}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null; then
+      printf "${COLOR_SUCCESS}Cleaned %s${COLOR_RESET}\n" "${target}"
+      log_msg INFO "Cleaned ${target}"
+      return 0
+    fi
+  fi
+  printf "${COLOR_WARN}Failed to clean %s${COLOR_RESET}\n" "${target}"
+  return 1
+}
+
 calculate_cleanup_size() {
   local total=0
   local path
@@ -595,7 +817,7 @@ calculate_cleanup_size() {
     [[ -z ${path} ]] && continue
     if [[ -e ${path} ]]; then
       local size
-      size=$(du -sk "${path}" 2>/dev/null | awk '{print $1}' || echo 0)
+      size=$(du -sk "${path}" 2>/dev/null | awk 'END {print $1 + 0}' || true)
       [[ ${size} =~ ^[0-9]+$ ]] && total=$(( total + size ))
     fi
   done
@@ -621,7 +843,8 @@ disk_cleanup() {
   while IFS= read -r target; do
     if [[ -e ${target} ]]; then
       local size
-      size=$(du -sh "${target}" 2>/dev/null | awk '{print $1}' || echo "N/A")
+      size=$(du -sh "${target}" 2>/dev/null | awk 'END {print $1}' || true)
+      [[ -z ${size} ]] && size="N/A"
       printf "[%d] %s (%s)\n" "${idx}" "${target}" "${size}"
       ((idx++))
     fi
@@ -629,49 +852,59 @@ disk_cleanup() {
   
   printf "\n${COLOR_HILIGHT}Total reclaimable space: %s${COLOR_RESET}\n" "$(echo "${cleanup_targets}" | calculate_cleanup_size)"
   
-  printf "\n1) Clean all targets\n2) Select specific targets\n0) Cancel\n"
+  if [[ ${CLEANUP_DRY_RUN} == true || ${NON_INTERACTIVE} == true ]]; then
+    printf "\n${COLOR_INFO}Dry run only. Pass --yes to clean all safe targets in non-interactive mode.${COLOR_RESET}\n"
+  fi
+
+  if [[ ${NON_INTERACTIVE} == true ]]; then
+    local cleaned=0
+    while IFS= read -r target; do
+      [[ -d ${target} ]] || continue
+      if [[ ${ASSUME_YES} == true ]]; then
+        clean_target_contents "${target}" && ((cleaned+=1))
+      else
+        CLEANUP_DRY_RUN=true clean_target_contents "${target}" && ((cleaned+=1))
+      fi
+    done <<< "${cleanup_targets}"
+    printf "\nProcessed %d cleanup targets.\n" "${cleaned}"
+    return
+  fi
+
+  printf "\n1) Dry run\n2) Clean all targets\n3) Select specific targets\n0) Cancel\n"
   read -r -p "Choose option: " choice
   
   case "${choice}" in
     1)
+      local cleaned=0
+      while IFS= read -r target; do
+        [[ -d ${target} ]] || continue
+        CLEANUP_DRY_RUN=true clean_target_contents "${target}" && ((cleaned+=1))
+      done <<< "${cleanup_targets}"
+      printf "\nDry run completed. Checked %d locations.\n" "${cleaned}"
+      ;;
+    2)
       if confirm "Clean all targets?"; then
         local cleaned=0
         while IFS= read -r target; do
-          if [[ -e ${target} ]]; then
-            if [[ -w ${target} ]] || [[ -w $(dirname "${target}") ]]; then
-              if rm -rf "${target}"/* "${target}"/.[^.]* 2>/dev/null; then
-                printf "${COLOR_SUCCESS}✓ Cleaned %s${COLOR_RESET}\n" "${target}"
-                log_msg INFO "Cleaned ${target}"
-                ((cleaned++))
-              else
-                printf "${COLOR_WARN}✗ Failed to clean %s${COLOR_RESET}\n" "${target}"
-              fi
-            else
-              printf "${COLOR_WARN}✗ No permission for %s${COLOR_RESET}\n" "${target}"
-            fi
-          fi
+          [[ -d ${target} ]] || continue
+          clean_target_contents "${target}" && ((cleaned+=1))
         done <<< "${cleanup_targets}"
         printf "\n${COLOR_SUCCESS}Cleanup completed. Cleaned %d locations.${COLOR_RESET}\n" "${cleaned}"
       fi
       ;;
-    2)
+    3)
       printf "\nEnter target numbers (space-separated, e.g., '1 3 5'): "
       read -r -a selected
       if [[ ${#selected[@]} -gt 0 ]]; then
         local -a target_array
         while IFS= read -r target; do
-          [[ -e ${target} ]] && target_array+=("${target}")
+          [[ -d ${target} ]] && target_array+=("${target}")
         done <<< "${cleanup_targets}"
         
         for num in "${selected[@]}"; do
           if [[ ${num} =~ ^[0-9]+$ ]] && [[ ${num} -ge 1 ]] && [[ ${num} -le ${#target_array[@]} ]]; then
             local target="${target_array[$((num-1))]}"
-            if rm -rf "${target}"/* "${target}"/.[^.]* 2>/dev/null; then
-              printf "${COLOR_SUCCESS}✓ Cleaned %s${COLOR_RESET}\n" "${target}"
-              log_msg INFO "Cleaned ${target}"
-            else
-              printf "${COLOR_WARN}✗ Failed to clean %s${COLOR_RESET}\n" "${target}"
-            fi
+            clean_target_contents "${target}" || true
           fi
         done
       fi
@@ -919,6 +1152,20 @@ package_updates() {
     fi
   else
     printf "${COLOR_WARN}No supported package manager found${COLOR_RESET}\n\n"
+  fi
+
+  if [[ ${NON_INTERACTIVE} == true ]]; then
+    if [[ ${PKG_MANAGER} == "unknown" ]]; then
+      return 1
+    fi
+    if [[ ${ASSUME_YES} == true ]]; then
+      printf "${COLOR_WARN}Non-interactive update requested with --yes.${COLOR_RESET}\n"
+      run_pkg_update
+    else
+      printf "${COLOR_INFO}Dry run:${COLOR_RESET} listing outdated packages. Pass --yes to update.\n"
+      list_outdated
+    fi
+    return
   fi
   
   printf "1) Update all packages\n2) List outdated packages\n3) Clean cache & orphans\n4) Search packages\n5) Install package\n6) Remove package\n7) Show all packages\n0) Back\n"
@@ -1175,9 +1422,27 @@ package_updates() {
 #############################
 # Backup Creator
 #############################
-backup_sources=("${HOME}/Documents" "${HOME}/Desktop" "${HOME}/Pictures")
+backup_sources=()
+
+load_backup_sources() {
+  backup_sources=()
+  if [[ -n ${BACKUP_SOURCES:-} ]]; then
+    local -a configured_sources=()
+    local source
+    local IFS=' '
+    read -r -a configured_sources <<< "${BACKUP_SOURCES}"
+    for source in "${configured_sources[@]}"; do
+      [[ -z ${source} ]] && continue
+      source=${source/#\~/${HOME}}
+      backup_sources+=("${source}")
+    done
+  else
+    backup_sources=("${HOME}/Documents" "${HOME}/Desktop" "${HOME}/Pictures")
+  fi
+}
 
 create_backup() {
+  load_backup_sources
   local timestamp
   timestamp=$(date '+%Y%m%d_%H%M%S' 2>/dev/null || date '+%Y%m%d_%H%M%S')
   local backup_file="${BACKUP_DIR}/backup_${timestamp}.tar.gz"
@@ -1208,7 +1473,20 @@ create_backup() {
 backup_creator() {
   clear_screen
   print_menu_header
-  printf "${COLOR_INFO}Backup sources:${COLOR_RESET} %s\n" "${backup_sources[*]}"
+  load_backup_sources
+  printf "${COLOR_INFO}Backup sources:${COLOR_RESET}\n"
+  local source
+  for source in "${backup_sources[@]}"; do
+    printf "  - %s\n" "${source}"
+  done
+  if [[ ${NON_INTERACTIVE} == true ]]; then
+    if [[ ${ASSUME_YES} == true ]]; then
+      create_backup
+    else
+      printf "${COLOR_INFO}Dry run:${COLOR_RESET} pass --yes to create a backup.\n"
+    fi
+    return
+  fi
   if confirm "Create backup now?"; then
     create_backup
     printf "${COLOR_SUCCESS}Backup complete.${COLOR_RESET}\n"
@@ -1262,6 +1540,10 @@ process_monitor() {
         ;;
     esac
     set -e
+  fi
+
+  if [[ ${NON_INTERACTIVE} == true ]]; then
+    return
   fi
   
   printf "\n${COLOR_INFO}Process Killer:${COLOR_RESET}\n"
@@ -1329,6 +1611,21 @@ network_speed_test() {
     printf "  npm install -g fast-cli\n"
     set -e
     pause
+    return
+  fi
+
+  if [[ ${NON_INTERACTIVE} == true ]]; then
+    if [[ ${has_networkquality} == true ]]; then
+      run_networkquality_test || true
+    elif [[ ${has_speedtest} == true ]]; then
+      run_speedtest_cli || true
+    elif [[ ${has_fast} == true ]]; then
+      run_fast_cli || true
+    elif [[ ${has_curl} == true ]]; then
+      run_curl_fallback || true
+    fi
+    run_latency_test || true
+    set -e
     return
   fi
   
@@ -1967,22 +2264,28 @@ fzf_search() {
   local file_types=$2
   
   printf "${COLOR_INFO}Launching fzf file finder...${COLOR_RESET}\n"
-  local fzf_cmd="find \"${search_dir}\" -type f"
-  
-  if [[ -n ${file_types} ]]; then
-    case "${file_types}" in
-      "text") fzf_cmd+=" \\( -name '*.txt' -o -name '*.md' -o -name '*.log' \\)" ;;
-      "code") fzf_cmd+=" \\( -name '*.py' -o -name '*.js' -o -name '*.sh' -o -name '*.c' -o -name '*.cpp' -o -name '*.java' \\)" ;;
-      "config") fzf_cmd+=" \\( -name '*.conf' -o -name '*.cfg' -o -name '*.ini' -o -name '*.json' -o -name '*.yaml' -o -name '*.yml' \\)" ;;
-      "image") fzf_cmd+=" \\( -name '*.jpg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.svg' \\)" ;;
-    esac
-  fi
-  
+
   local selected_file
-  if selected_file=$(eval "${fzf_cmd}" 2>/dev/null | fzf --height 60% --border --preview 'head -20 {}' --preview-window=right:50% --header="Press ESC to cancel"); then
-    if [[ -n ${selected_file} ]]; then
-      open_file "${selected_file}"
-    fi
+  case "${file_types}" in
+    text)
+      selected_file=$(find "${search_dir}" -type f \( -name '*.txt' -o -name '*.md' -o -name '*.log' \) 2>/dev/null | fzf --height 60% --border --preview 'head -20 {}' --preview-window=right:50% --header="Press ESC to cancel") || return
+      ;;
+    code)
+      selected_file=$(find "${search_dir}" -type f \( -name '*.py' -o -name '*.js' -o -name '*.sh' -o -name '*.c' -o -name '*.cpp' -o -name '*.java' \) 2>/dev/null | fzf --height 60% --border --preview 'head -20 {}' --preview-window=right:50% --header="Press ESC to cancel") || return
+      ;;
+    config)
+      selected_file=$(find "${search_dir}" -type f \( -name '*.conf' -o -name '*.cfg' -o -name '*.ini' -o -name '*.json' -o -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | fzf --height 60% --border --preview 'head -20 {}' --preview-window=right:50% --header="Press ESC to cancel") || return
+      ;;
+    image)
+      selected_file=$(find "${search_dir}" -type f \( -name '*.jpg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.svg' \) 2>/dev/null | fzf --height 60% --border --preview 'head -20 {}' --preview-window=right:50% --header="Press ESC to cancel") || return
+      ;;
+    *)
+      selected_file=$(find "${search_dir}" -type f 2>/dev/null | fzf --height 60% --border --preview 'head -20 {}' --preview-window=right:50% --header="Press ESC to cancel") || return
+      ;;
+  esac
+
+  if [[ -n ${selected_file} ]]; then
+    open_file "${selected_file}"
   fi
 }
 
@@ -2511,12 +2814,43 @@ main_loop() {
   done
 }
 
-#############################
-# Entry Point
-#############################
-if [[ ${1:-} == "--non-interactive" ]]; then
-  shift
-  subcommand=${1:-}
+print_usage() {
+  cat <<EOF
+${SCRIPT_NAME} v${SCRIPT_VERSION}
+
+Usage:
+  ./system_suite.sh
+  ./system_suite.sh --help
+  ./system_suite.sh --version
+  ./system_suite.sh --non-interactive [--yes] [--dry-run] <command>
+
+Commands:
+  info       Show system information
+  cleanup    Show cleanup targets; use --yes to clean safe targets
+  update     List package updates; use --yes to update packages
+  backup     Show backup sources; use --yes to create a backup
+  monitor    Show top processes without prompting to kill
+  speed      Run the best available speed/connectivity test
+  service    List services where supported
+  battery    Show battery information
+  logs       Show System Suite logs
+  find       Open file finder
+  time       Show date, time, calendar, and uptime
+
+Options:
+  --yes, -y       Confirm destructive or modifying non-interactive actions
+  --dry-run      Preview cleanup actions
+  --help, -h     Show this help
+  --version      Show version
+
+Environment:
+  SYSTEM_SUITE_DISK_PATH   Disk path used by dashboard and alerts
+  BACKUP_SOURCES           Space-separated directories for backups
+EOF
+}
+
+run_cli_command() {
+  local subcommand=${1:-}
   case "${subcommand}" in
     info) system_info_dashboard ;;
     cleanup) disk_cleanup ;;
@@ -2524,14 +2858,58 @@ if [[ ${1:-} == "--non-interactive" ]]; then
     backup) backup_creator ;;
     monitor) process_monitor ;;
     speed) network_speed_test ;;
-    service) service_manager ;;
+    service) list_services ;;
     battery) battery_health ;;
-    logs) log_analyzer ;;
+    logs) view_logs ;;
     find) file_finder_fzf ;;
     time) time_date_display ;;
     edit) file_editor_nvim ;;
-    *) printf "Unknown subcommand.\n" ;;
+    ""|help|--help|-h) print_usage ;;
+    version|--version|-v) printf "%s v%s\n" "${SCRIPT_NAME}" "${SCRIPT_VERSION}" ;;
+    *)
+      printf "Unknown subcommand: %s\n\n" "${subcommand}" >&2
+      print_usage >&2
+      return 2
+      ;;
   esac
+}
+
+#############################
+# Entry Point
+#############################
+subcommand=""
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    --non-interactive|--no-interactive)
+      NON_INTERACTIVE=true
+      shift
+      ;;
+    --yes|-y)
+      ASSUME_YES=true
+      shift
+      ;;
+    --dry-run)
+      CLEANUP_DRY_RUN=true
+      shift
+      ;;
+    --help|-h)
+      print_usage
+      exit 0
+      ;;
+    --version|-v)
+      printf "%s v%s\n" "${SCRIPT_NAME}" "${SCRIPT_VERSION}"
+      exit 0
+      ;;
+    *)
+      subcommand=${1}
+      shift
+      ;;
+  esac
+done
+
+if [[ -n ${subcommand} ]]; then
+  [[ ${NON_INTERACTIVE} == false ]] && NON_INTERACTIVE=true
+  run_cli_command "${subcommand}"
 else
   main_loop
 fi
