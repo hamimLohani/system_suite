@@ -6,7 +6,7 @@ IFS=$'\n\t'
 #############################
 # Global Configuration
 #############################
-SCRIPT_VERSION="1.2.1"
+SCRIPT_VERSION="1.3.1"
 SCRIPT_NAME="System Suite"
 CONFIG_DIR="${HOME}/.config/system_suite"
 DATA_DIR="${HOME}/.local/share/system_suite"
@@ -733,7 +733,7 @@ system_doctor() {
 # Disk Cleanup
 #############################
 get_cleanup_targets() {
-  local -a targets
+  local -a targets=()
   
   # Common temp/cache directories. Keep system-wide paths conservative.
   [[ -d "${TMPDIR:-}" ]] && targets+=("${TMPDIR}")
@@ -773,7 +773,9 @@ get_cleanup_targets() {
   # System logs (with permission check)
   [[ -w "/var/log" ]] && targets+=("/var/log")
   
-  printf '%s\n' "${targets[@]}"
+  if [[ ${#targets[@]} -gt 0 ]]; then
+    printf '%s\n' "${targets[@]}"
+  fi
 }
 
 is_safe_cleanup_target() {
@@ -1111,7 +1113,12 @@ clean_cache() {
       run_or_warn "YUM clean" sudo yum clean all
       ;;
     pacman) 
-      run_or_warn "Pacman orphan removal" sudo pacman -Rns $(pacman -Qtdq) 2>/dev/null || true
+      local orphans
+      orphans=$(pacman -Qtdq 2>/dev/null || true)
+      if [[ -n "${orphans}" ]]; then
+        # shellcheck disable=SC2086
+        run_or_warn "Pacman orphan removal" sudo pacman -Rns ${orphans} 2>/dev/null || true
+      fi
       run_or_warn "Pacman cache clean" sudo pacman -Sc --noconfirm
       ;;
     zypper) 
@@ -2822,17 +2829,19 @@ Usage:
   ./system_suite.sh --non-interactive [--yes] [--dry-run] <command>
 
 Commands:
-  info       Show system information
-  cleanup    Show cleanup targets; use --yes to clean safe targets
-  update     List package updates; use --yes to update packages
-  backup     Show backup sources; use --yes to create a backup
-  monitor    Show top processes without prompting to kill
-  speed      Run the best available speed/connectivity test
-  service    List services where supported
-  battery    Show battery information
-  logs       Show System Suite logs
-  find       Open file finder
-  time       Show date, time, calendar, and uptime
+  info          Show system information
+  cleanup       Show cleanup targets; use --yes to clean safe targets
+  update        List package updates; use --yes to update packages
+  backup        Show backup sources; use --yes to create a backup
+  monitor       Show top processes without prompting to kill
+  speed         Run the best available speed/connectivity test
+  service       List services where supported
+  battery       Show battery information
+  logs          Show System Suite logs
+  find          Open file finder
+  time          Show date, time, calendar, and uptime
+  completion    Generate shell completion script (bash/zsh)
+  man           View manual page or export to a directory
 
 Options:
   --yes, -y       Confirm destructive or modifying non-interactive actions
@@ -2846,8 +2855,151 @@ Environment:
 EOF
 }
 
+generate_completion() {
+  local shell_type=${1:-}
+  case "${shell_type}" in
+    bash)
+      cat <<'EOF'
+# bash completion for system-suite
+_system_suite_completion() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="info cleanup update backup monitor speed service battery logs find time edit completion man help version"
+    local options="--yes -y --dry-run --help -h --version -v --non-interactive"
+
+    if [[ ${cword} -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "${commands} ${options}" -- "${cur}") )
+        return 0
+    fi
+
+    case "${words[1]}" in
+        completion)
+            COMPREPLY=( $(compgen -W "bash zsh" -- "${cur}") )
+            return 0
+            ;;
+        cleanup|update|backup)
+            COMPREPLY=( $(compgen -W "--yes -y --dry-run" -- "${cur}") )
+            return 0
+            ;;
+        *)
+            COMPREPLY=( $(compgen -W "${options}" -- "${cur}") )
+            return 0
+            ;;
+    esac
+}
+complete -F _system_suite_completion system-suite system_suite.sh
+EOF
+      ;;
+    zsh)
+      cat <<'EOF'
+#compdef system-suite system_suite.sh
+
+_system_suite() {
+    local -a commands options
+
+    commands=(
+        'info:Show system information dashboard'
+        'cleanup:Show cleanup targets; clean safe targets with --yes'
+        'update:List package updates; update packages with --yes'
+        'backup:Show backup sources; create backup with --yes'
+        'monitor:Show top processes without prompting'
+        'speed:Run network speed and latency test'
+        'service:List and inspect system services'
+        'battery:Show battery health and diagnostics'
+        'logs:Display System Suite operation logs'
+        'find:Search files interactively or by criteria'
+        'time:Show current date, time, calendar, and uptime'
+        'edit:Create or edit files with nvim/nano'
+        'completion:Generate shell completion script (bash/zsh)'
+        'man:View manual page or export roff documentation'
+        'help:Show help message'
+        'version:Show version information'
+    )
+
+    options=(
+        '(-y --yes)'{-y,--yes}'[Confirm destructive or modifying actions]'
+        '--dry-run[Preview cleanup actions without deleting]'
+        '(-h --help)'{-h,--help}'[Show help]'
+        '(-v --version)'{-v,--version}'[Show version]'
+        '--non-interactive[Run in non-interactive batch mode]'
+    )
+
+    _arguments \
+        '1: :->subcommand' \
+        '*: :->args' \
+        && return 0
+
+    case $state in
+        subcommand)
+            _describe -t commands 'command' commands
+            _describe -t options 'option' options
+            ;;
+        args)
+            case $words[2] in
+                completion)
+                    local -a shells
+                    shells=('bash:Generate Bash completion' 'zsh:Generate Zsh completion')
+                    _describe -t shells 'shell' shells
+                    ;;
+                cleanup|update|backup)
+                    _values 'options' \
+                        '-y[Confirm action]' \
+                        '--yes[Confirm action]' \
+                        '--dry-run[Preview only]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_system_suite "$@"
+EOF
+      ;;
+    *)
+      printf "Usage: %s completion <bash|zsh>\n" "${0##*/}" >&2
+      return 1
+      ;;
+  esac
+}
+
+show_man_page() {
+  local target_dir=${1:-}
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+  local man_src="${script_dir}/man/system-suite.1"
+
+  if [[ -n "${target_dir}" ]]; then
+    mkdir -p "${target_dir}"
+    local dest="${target_dir%/}/system-suite.1"
+    if [[ -f "${man_src}" ]]; then
+      if [[ -f "${dest}" ]] && [[ "$(cd "$(dirname "${dest}")" 2>/dev/null && pwd)/$(basename "${dest}")" == "$(cd "$(dirname "${man_src}")" 2>/dev/null && pwd)/$(basename "${man_src}")" ]]; then
+        printf "Man page already present at %s\n" "${dest}"
+        return 0
+      fi
+      cp -f "${man_src}" "${dest}"
+      printf "Wrote %s\n" "${dest}"
+      return 0
+    else
+      printf "Man page source not found at %s\n" "${man_src}" >&2
+      return 1
+    fi
+  fi
+
+  if [[ -f "${man_src}" ]] && command -v man >/dev/null 2>&1; then
+    man "${man_src}" 2>/dev/null || cat "${man_src}"
+  elif command -v man >/dev/null 2>&1 && man system-suite 2>/dev/null; then
+    return 0
+  elif [[ -f "${man_src}" ]]; then
+    cat "${man_src}"
+  else
+    print_usage
+  fi
+}
+
 run_cli_command() {
   local subcommand=${1:-}
+  shift || true
   case "${subcommand}" in
     info) system_info_dashboard ;;
     cleanup) disk_cleanup ;;
@@ -2861,6 +3013,8 @@ run_cli_command() {
     find) file_finder_fzf ;;
     time) time_date_display ;;
     edit) file_editor_nvim ;;
+    completion) generate_completion "${1:-}" ;;
+    man) show_man_page "${1:-}" ;;
     ""|help|--help|-h) print_usage ;;
     version|--version|-v) printf "%s v%s\n" "${SCRIPT_NAME}" "${SCRIPT_VERSION}" ;;
     *)
@@ -2875,6 +3029,7 @@ run_cli_command() {
 # Entry Point
 #############################
 subcommand=""
+extra_args=()
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --non-interactive|--no-interactive)
@@ -2898,7 +3053,11 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      subcommand=${1}
+      if [[ -z "${subcommand}" ]]; then
+        subcommand=${1}
+      else
+        extra_args+=("${1}")
+      fi
       shift
       ;;
   esac
@@ -2906,7 +3065,11 @@ done
 
 if [[ -n ${subcommand} ]]; then
   [[ ${NON_INTERACTIVE} == false ]] && NON_INTERACTIVE=true
-  run_cli_command "${subcommand}"
+  if [[ ${#extra_args[@]} -gt 0 ]]; then
+    run_cli_command "${subcommand}" "${extra_args[@]}"
+  else
+    run_cli_command "${subcommand}"
+  fi
 else
   main_loop
 fi

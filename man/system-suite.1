@@ -1,0 +1,152 @@
+.nh
+.TH "SYSTEM-SUITE" "1" "Sep 2026" "system-suite 1.3.1" "System Suite Manual"
+
+.SH NAME
+.PP
+system-suite \- Terminal-based system maintenance, monitoring, and optimization toolkit
+
+.SH SYNOPSIS
+.PP
+\fBsystem-suite\fP [\fIOPTIONS\fR]
+.br
+\fBsystem-suite\fP [\fIOPTIONS\fR] \fICOMMAND\fR [\fIARGS\fR...]
+
+.SH DESCRIPTION
+.PP
+\fBsystem-suite\fR is a unified, terminal-based system monitoring and maintenance toolkit
+designed for macOS, Linux, and Unix-like environments. It provides interactive dashboards,
+smart disk cleanup, multi-platform package updates, network speed testing, service management,
+and interactive file discovery.
+
+When executed without arguments in an interactive terminal, \fBsystem-suite\fR launches an interactive
+menu. When invoked with a subcommand or in non-interactive environments, it executes the specified command
+directly and cleanly terminates.
+
+.SH COMMANDS
+.TP
+\fBinfo\fR
+Display complete system metrics, CPU utilization, memory breakdown, storage targets, and network details.
+.TP
+\fBcleanup\fR [\fB\-\-dry-run\fR] [\fB\-\-yes\fR]
+Inspect and clean safe temporary files, caches, application logs, and development artifacts.
+\fB\-\-dry-run\fR previews targets without deletion. \fB\-\-yes\fR confirms execution in batch mode.
+.TP
+\fBupdate\fR [\fB\-\-yes\fR]
+Check and perform package upgrades across active system package managers (Homebrew, APT, DNF, Pacman, Zypper, PKG, etc.).
+.TP
+\fBbackup\fR [\fB\-\-yes\fR]
+Create compressed archives (.tar.gz) of configured directories with automatic timestamping and cataloging.
+.TP
+\fBmonitor\fR
+Display running processes sorted by resource consumption (supports htop if available).
+.TP
+\fBspeed\fR
+Run network speed and latency benchmarks using the best native tool available (\fBnetworkQuality\fR on macOS, \fBspeedtest-cli\fR, or \fBcurl\fR fallbacks).
+.TP
+\fBservice\fR
+List, inspect, and manage system background services (supports systemctl on Linux and launchctl on macOS).
+.TP
+\fBbattery\fR
+Show battery health metrics, charge cycles, and power diagnostics (macOS and Linux upower).
+.TP
+\fBlogs\fR
+View and filter System Suite audit and operational logs.
+.TP
+\fBfind\fR
+Interactive fuzzy finder for files, recently modified items, or file types (supports fzf).
+.TP
+\fBtime\fR
+Display date, time, calendar, and system uptime.
+.TP
+\fBcompletion\fR \fIbash|zsh\fR
+Generate shell autocompletion script for the specified shell.
+.TP
+\fBman\fR [\fIDIR\fR]
+View the manual page or export \fBsystem-suite.1\fR to \fIDIR\fR.
+
+.SH OPTIONS
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Assume yes and bypass confirmation prompts for non-interactive modifications (e.g. cleanup, update, backup).
+.TP
+\fB\-\-dry-run\fR
+Preview actions (specifically cleanup) without modifying or deleting files.
+.TP
+\fB\-\-non-interactive\fR, \fB\-\-no-interactive\fR
+Force non-interactive batch mode execution.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print concise usage instructions and available options.
+.TP
+\fB\-v\fR, \fB\-\-version\fR
+Print the current version of \fBsystem-suite\fR.
+
+.SH ENVIRONMENT VARIABLES
+.TP
+\fBSYSTEM_SUITE_DISK_PATH\fR
+Specify the primary mount point or directory path used for disk capacity metrics and alerts (default: \fB$HOME\fR).
+.TP
+\fBBACKUP_SOURCES\fR
+Space-delimited list of directories to include during backup generation.
+.TP
+\fBNO_COLOR\fR
+If set, suppresses ANSI color formatting for plain text output and pipeline integration.
+
+.SH FILES
+.TP
+\fB~/.config/system_suite/\fR
+Directory containing user configuration files.
+.TP
+\fB~/.local/share/system_suite/\fR
+Data storage directory containing operational logs and cached metadata.
+.TP
+\fB~/.local/share/system_suite/backups/\fR
+Default destination for created backup archives.
+
+.SH EXAMPLES
+.PP
+Launch interactive menu dashboard:
+.RS
+.nf
+$ system-suite
+.fi
+.RS
+
+.PP
+Display system information overview:
+.RS
+.nf
+$ system-suite info
+.fi
+.RE
+
+.PP
+Preview disk cleanup targets safely:
+.RS
+.nf
+$ system-suite cleanup --dry-run
+.fi
+.RE
+
+.PP
+Run non-interactive package updates in cron or automation:
+.RS
+.nf
+$ system-suite update --yes
+.fi
+.RE
+
+.PP
+Install Zsh shell completion:
+.RS
+.nf
+$ system-suite completion zsh > ~/.zsh/completions/_system-suite
+.fi
+.RE
+
+.SH AUTHORS
+Written and maintained by Hamim Lohani <hamimlohani@gmail.com>.
+
+.SH COPYRIGHT
+MIT License. Copyright (c) Hamim Lohani.
+Report issues at: https://github.com/hamimLohani/system_suite/issues

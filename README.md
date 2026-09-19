@@ -1,285 +1,300 @@
-# System Suite v1.1
+# 💻 System Suite
 
-**[YouTube Video](https://youtu.be/W2TKm4A-wA8)**
+> Terminal-based system maintenance, telemetry monitoring, and optimization toolkit — like `htop` + `ncdu` + `speedtest` + package manager in a single unified, zero-dependency CLI.
 
-A comprehensive terminal-based system maintenance and monitoring toolkit for macOS, Linux, and Unix-like systems.
+[![CI](https://github.com/hamimLohani/system_suite/actions/workflows/ci.yml/badge.svg)](https://github.com/hamimLohani/system_suite/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hamimLohani/system_suite?style=flat-square&color=blue)](https://github.com/hamimLohani/system_suite/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![Shell](https://img.shields.io/badge/bash-4.0%2B-informational?style=flat-square&logo=gnubash)](https://www.gnu.org/software/bash/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20BSD-lightgrey?style=flat-square)](https://github.com/hamimLohani/system_suite)
+[![Homebrew](https://img.shields.io/badge/homebrew-hamimlohani%2Ftap-orange?style=flat-square&logo=homebrew)](https://github.com/hamimLohani/homebrew-tap)
 
-## Features
+```text
+ ╔══════════════════════════════════════════════════════════════════════════════╗
+ ║                             System Suite v1.3.1                              ║
+ ║                                macOS :: arm64                                ║
+ ║                       Created By :: Md Inzamamul Lohani                      ║
+ ╚══════════════════════════════════════════════════════════════════════════════╝
 
-### 🖥️ System Monitoring
-- **System Info Dashboard** - Complete system overview with CPU, memory, disk, and network stats
-- **Process Monitor & Killer** - View running processes with htop or fallback to ps, kill processes
-- **Battery Health** - Check battery status and health (macOS/Linux with upower)
-- **Alert Check** - Monitor disk usage and system thresholds
+ [1]  System Info Dashboard          [8]  Battery Health Monitor
+ [2]  Process Monitor & Killer       [9]  Log Analyzer
+ [3]  Disk Cleanup (Dry-Run / Yes)   [10] Check System Alerts
+ [4]  Package Manager Updates        [11] View Suite Logs
+ [5]  Network Speed Test (Native)    [12] Interactive File Finder (fzf)
+ [6]  Network Latency Check          [13] Time, Calendar & Uptime
+ [7]  Service Manager (systemd/launchd) [14] Create / Edit File (nvim)
 
-### 🧹 System Maintenance
-- **Disk Cleanup** - Clean temporary files, caches, logs, and development artifacts
-- **Package Updates** - Update packages across multiple package managers
-- **Cache Cleanup** - Remove orphaned packages and clean package caches
-
-### 🌐 Network Tools
-- **Internet Speed Test** - Multi-platform speed testing with native tools:
-  - macOS: `networkQuality`
-  - Linux: `speedtest-cli`, `fast-cli`
-  - Universal: curl-based fallback
-- **Latency Testing** - Ping multiple DNS servers for connection quality
-
-### 📁 File Management
-- **File Finder (fzf)** - Interactive file search with preview
-- **File Editor (nvim)** - Create and edit files with Neovim
-- **Log Analyzer** - View and filter system logs
-
-### 🔧 System Services
-- **Service Manager** - Start, stop, restart, and check system services
-- **Backup Creator** - Create compressed backups of important directories
-
-### ⏰ Utilities
-- **Time & Date Display** - Current time, timezone, calendar, and uptime
-- **View Logs** - Browse system suite operation logs
-
-## Supported Systems
-
-| OS | Package Manager | Speed Test | Services |
-|---|---|---|---|
-| macOS | Homebrew | networkQuality | launchctl |
-| Linux | apt, dnf, yum, pacman, zypper | speedtest-cli, fast-cli | systemctl |
-| WSL | apt, dnf, yum | speedtest-cli, fast-cli | systemctl |
-| FreeBSD | pkg | speedtest-cli | - |
-| OpenBSD | pkg | speedtest-cli | - |
-| NetBSD | pkg | speedtest-cli | - |
-
-## Installation
-
-### Quick Start
-```bash
-# Clone or download the script
-curl -O https://raw.githubusercontent.com/hamimLohani/system_suite/main/system_suite.sh
-chmod +x system_suite.sh
-./system_suite.sh
+ [0]  Exit
 ```
 
-### Install via Homebrew
-```bash
+> 📺 **Watch the Walkthrough Demo**: [YouTube Demonstration](https://youtu.be/W2TKm4A-wA8)
+
+---
+
+## ✨ Key Features
+
+### 🖥️ System Telemetry & Monitoring
+| Feature | Details |
+|---|---|
+| **System Info Dashboard** | Complete telemetry view: CPU cores, memory utilization, mount capacity, network interfaces, IP addresses, and kernel version |
+| **Process Monitor & Killer** | Interactive process inspection with `htop` (or fallback to formatted `ps`), with PID filtering and graceful termination |
+| **Battery Health & Cycles** | Real-time cycle count, battery capacity, temperature, and charging status (`system_profiler` on macOS, `upower` on Linux) |
+| **Threshold Alerts** | Automated warning indicators when disk usage, CPU temperature, or load exceed safe boundaries |
+
+### 🧹 Storage & Safe Deep Cleanup
+| Feature | Details |
+|---|---|
+| **Conservative Guardrails** | Never nukes root (`/`), `$HOME`, `/tmp`, or `/var/log` directly. Only cleans contents of safe application caches |
+| **Developer Cache Cleaning** | Discovers and sweeps caches for `npm`, `yarn`, `gradle`, `cargo`, `maven`, `go/pkg/mod`, and Docker temporary files |
+| **Browser & App Caches** | Purges cache artifacts for Chrome, Firefox, and Safari without touching preferences or saved sessions |
+| **Preview Dry-Run** | Run `--dry-run` to inspect target directories and calculated reclaimable space before taking any action |
+
+### 📦 Universal Package Maintenance
+| Feature | Details |
+|---|---|
+| **Multi-Manager Support** | Native integration with `brew`, `apt`, `dnf`, `yum`, `pacman`, `zypper`, `pkg`, `xbps`, and `apk` |
+| **Automated Upgrades** | Single command checks and updates all active package managers across the host system |
+| **Orphan & Cache Sweep** | Purges unneeded dependencies, cached tarballs, and orphaned packages safely |
+
+### 🌐 Network Performance & Speed Benchmarks
+| Feature | Details |
+|---|---|
+| **Native Speed Tests** | Automatically leverages the fastest platform tool: Apple `networkQuality` on macOS 12+, `speedtest-cli`, or `fast-cli` |
+| **Zero-Dependency Fallback** | Embedded `curl`-based bandwidth testing against low-latency CDN edge nodes if third-party tools are absent |
+| **DNS Latency Matrix** | Parallel latency and reachability benchmarks against Cloudflare (1.1.1.1), Google (8.8.8.8), and Quad9 |
+
+### 📁 File Discovery, Services & Backups
+| Feature | Details |
+|---|---|
+| **Fuzzy File Search** | Interactive recursive search powered by `fzf` with integrated file previews, clipboard path copying, and Neovim integration |
+| **Service Control** | Inspect, start, stop, and restart background daemons (`launchctl` on macOS, `systemctl` on Linux) |
+| **Automated Backups** | Compressed `.tar.gz` archiving with checksum cataloging and customizable source folders via `BACKUP_SOURCES` |
+
+---
+
+## 🚀 Installation
+
+### Option 1: Homebrew (macOS & Linux) — Recommended
+
+```sh
 brew tap hamimlohani/tap
-brew trust hamimlohani/tap
 brew install system-suite
 ```
 
-### Dependencies
-
-#### Required (Basic functionality)
-- `bash` (4.0+)
-- `curl` (for speed tests and updates)
-
-#### Optional (Enhanced features)
-```bash
-# macOS
-brew install htop fzf neovim speedtest-cli
-npm install -g fast-cli
-
-# Ubuntu/Debian
-sudo apt update
-sudo apt install htop fzf neovim speedtest-cli curl
-npm install -g fast-cli
-
-# CentOS/RHEL/Fedora
-sudo dnf install htop fzf neovim speedtest-cli curl
-npm install -g fast-cli
-
-# Arch Linux
-sudo pacman -S htop fzf neovim speedtest-cli curl
-npm install -g fast-cli
-
-# FreeBSD
-sudo pkg install htop fzf neovim speedtest-cli curl
+Upgrade anytime:
+```sh
+brew upgrade system-suite
 ```
 
-## Usage
+### Option 2: Standalone One-Liner (Zero Sudo Required)
 
-### Interactive Mode (Default)
-```bash
-./system_suite.sh
+Install the latest release directly to `/usr/local/bin` (or `~/.local/bin`):
+
+```sh
+curl -sSfL https://raw.githubusercontent.com/hamimLohani/system_suite/main/install.sh | sh
 ```
 
-### Non-Interactive Mode
-```bash
-# Run specific functions without blocking prompts
-./system_suite.sh --non-interactive info              # System info
-./system_suite.sh --non-interactive cleanup --dry-run # Preview cleanup
-./system_suite.sh --non-interactive cleanup --yes     # Clean safe targets
-./system_suite.sh --non-interactive update            # List package updates
-./system_suite.sh --non-interactive update --yes      # Update packages
-./system_suite.sh --non-interactive backup            # Show backup sources
-./system_suite.sh --non-interactive backup --yes      # Create backup
-./system_suite.sh --non-interactive speed             # Speed/connectivity test
-./system_suite.sh --non-interactive monitor           # Process list only
+### Option 3: Debian / Ubuntu (`.deb` Package)
+
+Download and install the official Debian package from the [Releases page](https://github.com/hamimLohani/system_suite/releases):
+
+```sh
+# Fetch latest .deb and install
+curl -LO https://github.com/hamimLohani/system_suite/releases/latest/download/system-suite_1.3.1_all.deb
+sudo dpkg -i system-suite_1.3.1_all.deb
 ```
 
-Direct command style is also supported:
-```bash
-./system_suite.sh info
-./system_suite.sh cleanup --dry-run
-./system_suite.sh --version
-./system_suite.sh --help
+### Option 4: From Source (with `make`)
+
+```sh
+git clone https://github.com/hamimLohani/system_suite.git
+cd system_suite
+make install          # installs binary to ~/.local/bin, man pages, and completions
 ```
 
-## Configuration
+---
 
-### Environment Variables
-```bash
-# Custom disk usage path
-export SYSTEM_SUITE_DISK_PATH="/custom/path"
+## 🖥️ Usage
 
-# Custom backup sources (space-separated)
-export BACKUP_SOURCES="$HOME/Documents $HOME/Projects"
+### Interactive Menu
+Simply run without arguments:
+```sh
+system-suite
 ```
 
-### File Locations
-- **Config**: `~/.config/system_suite/`
-- **Data**: `~/.local/share/system_suite/`
-- **Logs**: `~/.local/share/system_suite/system_suite.log`
-- **Backups**: `~/.local/share/system_suite/backups/`
+### Non-Interactive / Automation Mode (CLI & Cron)
+Run individual commands directly without interactive prompts:
 
-## Speed Test Tools
+```sh
+# System information dashboard
+system-suite info
 
-### macOS
-- **networkQuality** (built-in, macOS 12+) - Apple's native network quality tool
-- **speedtest-cli** - Ookla's official CLI tool
-- **fast-cli** - Netflix's speed test
+# Preview cleanup targets without touching any files
+system-suite cleanup --dry-run
 
-### Linux/Unix
-- **speedtest-cli** - Most reliable, works everywhere
-- **fast-cli** - Netflix-based, requires Node.js
-- **curl fallback** - Built-in alternative using test servers
+# Run safe cleanup in batch/cron mode
+system-suite cleanup --yes
 
-### Installation Commands
-```bash
-# speedtest-cli
-pip install speedtest-cli
-# or via package manager (recommended)
+# Check and update all system package managers
+system-suite update --yes
 
-# fast-cli
-npm install -g fast-cli
+# Create a timestamped compressed backup
+system-suite backup --yes
 
-# Alternative: Use built-in curl fallback (no installation needed)
+# Run network bandwidth and latency tests
+system-suite speed
+
+# Process monitor snapshot
+system-suite monitor
+
+# Battery health and charge cycle diagnostics
+system-suite battery
+
+# System services overview
+system-suite service
+
+# Audit log viewer
+system-suite logs
+
+# Current time, calendar, and uptime
+system-suite time
 ```
 
-## Package Manager Support
+### Shell Autocompletions
 
-| Manager | Update | Install | Remove | Search | Clean |
-|---------|--------|---------|--------|--------|-------|
-| brew | ✅ | ✅ | ✅ | ✅ | ✅ |
-| apt | ✅ | ✅ | ✅ | ✅ | ✅ |
-| dnf | ✅ | ✅ | ✅ | ✅ | ✅ |
-| yum | ✅ | ✅ | ✅ | ✅ | ✅ |
-| pacman | ✅ | ✅ | ✅ | ✅ | ✅ |
-| zypper | ✅ | ✅ | ✅ | ✅ | ✅ |
-| pkg | ✅ | ✅ | ✅ | ✅ | ✅ |
-| xbps | ✅ | ✅ | ✅ | ✅ | ✅ |
-| apk | ✅ | ✅ | ✅ | ✅ | ✅ |
+Tab-complete commands and options in your terminal:
 
-## File Finder Features
+```sh
+# Zsh completion
+system-suite completion zsh > ~/.zsh/completions/_system-suite
 
-### Search Methods
-1. **All files** - Interactive search with fzf
-2. **By file type** - Text, code, config, images
-3. **By pattern** - Wildcard matching
-4. **Recent files** - Files modified in last 7 days
-
-### File Actions
-- Open with default application
-- Show file information
-- Copy path to clipboard
-- Edit with Neovim
-
-## Troubleshooting
-
-### Permission Issues
-```bash
-# Fix Homebrew permissions (macOS)
-sudo chown -R $(whoami) /opt/homebrew /usr/local/Homebrew
-
-# Fix general permissions
-sudo chown -R $(whoami) ~/.config ~/.local/share
+# Bash completion
+system-suite completion bash > /etc/bash_completion.d/system-suite
 ```
 
-### Missing Dependencies
-The script will suggest installation commands for missing tools:
-```bash
-# Example output
-No speed test tools available. Install speedtest-cli, fast-cli, or curl.
+### UNIX Manual Pages
 
-Installation suggestions:
-  brew install speedtest-cli
-  npm install -g fast-cli
+```sh
+# View formatted manual
+man system-suite
+
+# Or export roff man page
+system-suite man man/
 ```
 
-### Log Files
-Check logs for detailed error information:
-```bash
-tail -f ~/.local/share/system_suite/system_suite.log
+---
+
+## ⚙️ Configuration & Environment
+
+| Variable | Default | Description |
+|---|---|---|
+| `SYSTEM_SUITE_DISK_PATH` | `$HOME` (or `/`) | Target path/mount point used for capacity telemetry and disk alerts |
+| `BACKUP_SOURCES` | `"$HOME/Documents $HOME/Projects"` | Space-delimited directories included in automated backups |
+| `NO_COLOR` | `""` | Set to `1` or true to disable ANSI colors (auto-detected when piped) |
+| `SYSTEM_SUITE_INSTALL_DIR` | `/usr/local/bin` | Override install target for `install.sh` |
+| `SYSTEM_SUITE_NO_SUDO` | `0` | Set to `1` in `install.sh` to strictly install to `~/.local/bin` without `sudo` |
+
+### System Locations
+- **Configuration**: `~/.config/system_suite/`
+- **Data & Metrics**: `~/.local/share/system_suite/`
+- **Operational Logs**: `~/.local/share/system_suite/system_suite.log`
+- **Backup Archives**: `~/.local/share/system_suite/backups/`
+
+---
+
+## 🏗️ Developer Tooling (`Makefile`)
+
+The repository includes a comprehensive, self-documenting `Makefile` for streamlined development:
+
+```sh
+# Display all available targets
+make help
+
+# Validate script syntax and permissions
+make build
+
+# Run unit and integration smoke tests
+make test
+
+# Simulate bare CI environment
+make test-ci
+
+# Run ShellCheck with project rules
+make lint
+
+# Run lint + tests (CI gate)
+make check
+
+# Install binary, man page, and completions locally
+make install
+
+# Cleanly uninstall from system
+make uninstall
+
+# Build local Debian package
+make deb
+
+# Package release tarball + SHA256 checksums into dist/
+make dist
+
+# Tag and push version release
+make tag VERSION=v1.3.1
 ```
 
-## Advanced Usage
+---
 
-### Custom Backup Sources
-Set the `BACKUP_SOURCES` environment variable:
-```bash
-export BACKUP_SOURCES="$HOME/Documents $HOME/Projects"
+## 🧪 Continuous Integration & Testing
+
+| Environment | Checks Performed | Status |
+|---|---|---|
+| `ubuntu-latest` | ShellCheck linting · Smoke tests · Bare CI test · Dist packaging | ✅ Active |
+| `macos-latest` | ShellCheck linting · macOS smoke tests · Path validation | ✅ Active |
+| `release.yml` | Pre-flight tests · `.deb` build · Release archive · SHA256 checksums | ✅ Tag-triggered |
+
+Run local quality checks before pushing:
+```sh
+make check
 ```
 
-### Custom Cleanup Targets
-Modify `get_cleanup_targets()` function to add custom directories.
+---
 
-Cleanup is conservative by default:
-- Non-interactive cleanup previews actions unless `--yes` is provided.
-- Raw `/tmp`, `/var/log`, and the home directory are skipped as unsafe direct targets.
-- User cache, trash, browser cache, and development cache directories are cleaned by deleting their contents only.
+## 📁 Repository Structure
 
-## Development
-
-Run local smoke checks:
-```bash
-bash test/smoke.sh
+```text
+system_suite/
+├── Makefile                     Self-documenting developer targets (build, test, lint, install, dist)
+├── README.md                    Project showcase and documentation
+├── LICENSE                      MIT License
+├── UPDATING.md                  Step-by-step release playbook
+├── install.sh                   POSIX one-liner curl installer
+├── system_suite.sh              Main executable toolkit script
+├── .shellcheckrc                Linting rules and suppression filters
+├── .github/
+│   └── workflows/
+│       ├── ci.yml               Automated matrix testing (macOS & Ubuntu)
+│       └── release.yml          Tag push → test → debian pkg → tarball → release
+├── completions/
+│   ├── system-suite.bash        Native Bash completion script
+│   └── system-suite.zsh         Native Zsh completion script
+├── man/
+│   └── system-suite.1           UNIX manual page (roff format)
+└── test/
+    └── smoke.sh                 Cross-platform CLI validation suite
 ```
 
-Recommended linting:
-```bash
-shellcheck system_suite.sh test/smoke.sh
-```
+---
 
-GitHub Actions runs smoke tests on Ubuntu and macOS to protect cross-OS behavior.
+## 🤝 Contributing
 
-### Keyboard Shortcuts
-- **Ctrl+C** - Cancel current operation
-- **ESC** - Exit fzf/interactive tools
-- **Tab** - File path completion (where supported)
+1. Fork the repository and clone your fork.
+2. Run `make check` to ensure your environment is clean.
+3. Implement your feature or fix.
+4. Follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `refactor:`, `perf:`).
+5. Ensure `make check` passes with zero warnings.
+6. Open a Pull Request.
 
-## Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch
-3. Test on multiple platforms
-4. Submit a pull request
+## 📜 License
 
-## License
-
-MIT License - see LICENSE file for details.
-
-## Changelog
-
-### v1.1.0
-- Added safer non-interactive CLI behavior
-- Added `--help`, `--version`, `--yes`, and `--dry-run`
-- Added dry-run cleanup and guarded cleanup targets
-- Removed `eval` from file finder
-- Added `BACKUP_SOURCES` support
-- Added MIT license and CI smoke tests
-
-### v1.0.0
-- Initial release
-- Multi-platform support
-- Native speed test tools
-- Interactive file finder
-- Comprehensive system monitoring
-- Package manager integration
+MIT License © [Hamim Lohani](https://github.com/hamimLohani)

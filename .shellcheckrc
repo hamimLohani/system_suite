@@ -1,0 +1,15 @@
+# .shellcheckrc - ShellCheck configuration for system_suite
+# Focus on correctness, bugs, and portability while disabling stylistic noise
+
+# Disable printf format string warnings for ANSI color variables
+disable=SC2059
+# Disable shorthand conditional warnings (A && B || C idiom)
+disable=SC2015
+# Disable stylistic arithmetic warnings (${var} inside (( )))
+disable=SC2004
+# Disable read without -r warnings where backslash escape interpretation is intended or harmless
+disable=SC2162
+# Disable unused global threshold variables intended for user config/alerts
+disable=SC2034
+# Disable single quote escaping in echo messages
+disable=SC1003

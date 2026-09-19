@@ -44,5 +44,8 @@ run_check unknown fail "${script}" --non-interactive unknown
 SYSTEM_SUITE_DISK_PATH="/" run_check info pass "${script}" --non-interactive info
 run_check cleanup pass "${script}" --non-interactive cleanup --dry-run
 run_check backup pass "${script}" --non-interactive backup
+run_check completion_bash pass "${script}" completion bash
+run_check completion_zsh pass "${script}" completion zsh
+run_check man_export pass "${script}" man "${smoke_home}/man_test"
 
 printf "Smoke tests passed\n"

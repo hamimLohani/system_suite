@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Pre-release verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update -y && sudo apt-get install -y shellcheck
+
+      - name: Run lint and tests
+        run: make check
+
+  release:
+    name: Build & Publish Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Debian package
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: make deb VERSION="${VERSION}"
+
+      - name: Build release tarball
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: make dist VERSION="${VERSION}"
+
+      - name: Generate unified SHA-256 checksums
+        run: |
+          cd dist
+          shasum -a 256 *.deb *.tar.gz > checksums.txt
+          cat checksums.txt
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.tar.gz
+            dist/checksums.txt
+          generate_release_notes: true
+          header: |
+            ## System Suite ${{ steps.version.outputs.VERSION }}
+
+            Universal terminal-based system monitoring and maintenance toolkit for macOS and Linux.
+
+            ### Quick Install
+            ```sh
+            curl -sSfL https://raw.githubusercontent.com/hamimLohani/system_suite/main/install.sh | sh
+            ```
+
+            ### Homebrew
+            ```sh
+            brew tap hamimlohani/tap
+            brew install system-suite
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

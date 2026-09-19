@@ -2,11 +2,20 @@ name: CI
 
 on:
   push:
+    branches: ["main", "master"]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
 
 jobs:
-  smoke:
-    name: Shell smoke tests
+  test:
+    name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     strategy:
@@ -15,9 +24,29 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo apt-get update -y && sudo apt-get install -y shellcheck
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            brew install shellcheck
+          fi
+
+      - name: Run linting (ShellCheck)
+        run: make lint
+
       - name: Run smoke tests
         env:
           TERM: dumb
-        run: bash test/smoke.sh
+        run: make test
+
+      - name: Run bare-environment tests
+        run: make test-ci
+
+      - name: Verify release distribution packaging
+        run: make dist
