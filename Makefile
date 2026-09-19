@@ -91,33 +91,20 @@ deb: build man ## Build Debian .deb package (requires dpkg-deb)
 	@which dpkg-deb >/dev/null 2>&1 || { echo "Error: dpkg-deb not found"; exit 1; }
 	@mkdir -p $(DIST_DIR)
 	@PKG_DIR="$(DIST_DIR)/$(PROJECT)_$(VERSION)_all"; \
-	rm -rf "$$PKG_DIR"; \
+	rm -rf "$$PKG_DIR" && \
 	mkdir -p "$$PKG_DIR/DEBIAN" "$$PKG_DIR/usr/bin" "$$PKG_DIR/usr/share/man/man1" \
 		"$$PKG_DIR/usr/share/doc/$(PROJECT)" \
 		"$$PKG_DIR/usr/share/bash-completion/completions" \
-		"$$PKG_DIR/usr/share/zsh/vendor-completions"; \
-	install -m 0755 $(SCRIPT) "$$PKG_DIR/usr/bin/$(PROJECT)"; \
-	install -m 0644 man/$(PROJECT).1 "$$PKG_DIR/usr/share/man/man1/$(PROJECT).1"; \
-	install -m 0644 completions/$(PROJECT).bash "$$PKG_DIR/usr/share/bash-completion/completions/$(PROJECT)"; \
-	install -m 0644 completions/$(PROJECT).zsh "$$PKG_DIR/usr/share/zsh/vendor-completions/_$(PROJECT)"; \
-	install -m 0644 README.md LICENSE "$$PKG_DIR/usr/share/doc/$(PROJECT)/"; \
-	cat > "$$PKG_DIR/DEBIAN/control" <<-EOF; \
-	Package: $(PROJECT)\n\
-	Version: $(VERSION)\n\
-	Section: utils\n\
-	Priority: optional\n\
-	Architecture: all\n\
-	Maintainer: Hamim Lohani <hamimlohani@gmail.com>\n\
-	Depends: bash (>= 4.0), curl\n\
-	Homepage: https://github.com/hamimLohani/system_suite\n\
-	Description: Terminal-based system maintenance and monitoring toolkit\n\
-	 A comprehensive system maintenance and monitoring toolkit for macOS, Linux,\n\
-	 and Unix-like systems. Provides system monitoring, disk cleanup, package\n\
-	 updates, network speed testing, file management, and more.\n\
-	EOF
-	@dpkg-deb --build "$(DIST_DIR)/$(PROJECT)_$(VERSION)_all"
-	@echo "Built Debian package:"
-	@ls -lh $(DIST_DIR)/*.deb
+		"$$PKG_DIR/usr/share/zsh/vendor-completions" && \
+	install -m 0755 $(SCRIPT) "$$PKG_DIR/usr/bin/$(PROJECT)" && \
+	install -m 0644 man/$(PROJECT).1 "$$PKG_DIR/usr/share/man/man1/$(PROJECT).1" && \
+	install -m 0644 completions/$(PROJECT).bash "$$PKG_DIR/usr/share/bash-completion/completions/$(PROJECT)" && \
+	install -m 0644 completions/$(PROJECT).zsh "$$PKG_DIR/usr/share/zsh/vendor-completions/_$(PROJECT)" && \
+	install -m 0644 README.md LICENSE "$$PKG_DIR/usr/share/doc/$(PROJECT)/" && \
+	printf "Package: %s\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: all\nMaintainer: Hamim Lohani <hamimlohani@gmail.com>\nDepends: bash (>= 4.0), curl\nHomepage: https://github.com/hamimLohani/system_suite\nDescription: Terminal-based system maintenance and monitoring toolkit\n A comprehensive system maintenance and monitoring toolkit for macOS, Linux,\n and Unix-like systems. Provides system monitoring, disk cleanup, package\n updates, network speed testing, file management, and more.\n" "$(PROJECT)" "$(VERSION)" > "$$PKG_DIR/DEBIAN/control" && \
+	dpkg-deb --build "$$PKG_DIR" && \
+	echo "Built Debian package in $(DIST_DIR)/" && \
+	ls -lh $(DIST_DIR)/*.deb
 
 .PHONY: tag
 tag: ## Create and push a version tag. Usage: make tag VERSION=v1.3.0
